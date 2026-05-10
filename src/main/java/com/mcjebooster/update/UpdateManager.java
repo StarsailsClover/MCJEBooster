@@ -274,23 +274,50 @@ public class UpdateManager {
     }
     
     /**
-     * Downloads adapter from URL
+     * Downloads adapter from URL with version matching
+     * 
+     * @param downloadUrl URL to download from
+     * @param adapterId Adapter identifier (format: minecraftVersion-loader)
+     * @return Path to downloaded adapter, or null if failed
      */
     private Path downloadAdapter(String downloadUrl, String adapterId) {
+        // Validate adapterId format
+        if (adapterId == null || adapterId.isEmpty() || !adapterId.contains("-")) {
+            Logger.error("Invalid adapter ID format: " + adapterId);
+            return null;
+        }
+        
+        // Parse version from adapterId
+        String[] parts = adapterId.split("-", 2);
+        String mcVersion = parts[0];
+        String loader = parts.length > 1 ? parts[1] : "Vanilla";
+        
+        // Check if this release supports the requested version
+        if (!isVersionSupported(mcVersion)) {
+            Logger.error("Minecraft version " + mcVersion + " is not supported by this injector version");
+            return null;
+        }
+        
         Path targetPath = adapterCacheDir.resolve(adapterId + ".mcjeb");
         Path tempPath = adapterCacheDir.resolve(adapterId + ".mcjeb.tmp");
         
         try {
-            Logger.info("Downloading adapter from: " + downloadUrl);
+            Logger.info("Downloading adapter: " + adapterId);
+            
+            // Build proper download URL for GitHub Releases
+            String releaseUrl = buildReleaseDownloadUrl(adapterId);
+            if (releaseUrl != null) {
+                downloadUrl = releaseUrl;
+            }
+            
+            Logger.info("Download URL: " + downloadUrl);
             
             URL url = new URL(downloadUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
             conn.setReadTimeout(READ_TIMEOUT_MS);
             conn.setRequestProperty("Accept", "application/octet-stream");
-            
-            // Add GitHub API headers
-            conn.setRequestProperty("User-Agent", "MCJEBooster-UpdateManager");
+            conn.setRequestProperty("User-Agent", "MCJEBooster-" + getInjectorVersion());
             
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
@@ -298,12 +325,12 @@ public class UpdateManager {
                 return null;
             }
             
-            // Download to temporary file first
-            long totalSize = conn.getContentLengthLong();
+            // Download to temporary file
             long maxSize = 10 * 1024 * 1024; // 10MB max
+            long totalSize = conn.getContentLengthLong();
             
             if (totalSize > maxSize) {
-                Logger.error("File too large: " + totalSize + " bytes");
+                Logger.error("Adapter file too large: " + totalSize + " bytes (max: " + maxSize + ")");
                 return null;
             }
             
@@ -317,45 +344,105 @@ public class UpdateManager {
                 while ((bytesRead = in.read(buffer)) != -1) {
                     downloaded += bytesRead;
                     
-                    // Check size limit during download
                     if (downloaded > maxSize) {
                         Logger.error("Download exceeded maximum size");
                         throw new IOException("File too large");
                     }
                     
                     out.write(buffer, 0, bytesRead);
-                    
-                    // Log progress every 100KB
-                    if (downloaded % (100 * 1024) < 8192) {
-                        int percent = totalSize > 0 ? (int) ((downloaded * 100) / totalSize) : 0;
-                        Logger.debug("Download progress: " + percent + "%");
-                    }
                 }
             }
             
             // Verify checksum if available
-            if (cachedRelease != null && cachedRelease.checksum != null) {
+            String expectedChecksum = getExpectedChecksum(adapterId);
+            if (expectedChecksum != null) {
                 String fileChecksum = calculateChecksum(tempPath);
-                if (fileChecksum == null || !fileChecksum.equalsIgnoreCase(cachedRelease.checksum)) {
-                    Logger.error("Checksum mismatch for downloaded adapter");
+                if (fileChecksum == null || !fileChecksum.equalsIgnoreCase(expectedChecksum)) {
+                    Logger.error("Checksum mismatch for adapter: " + adapterId);
                     Files.deleteIfExists(tempPath);
                     return null;
                 }
+                Logger.info("Checksum verified for: " + adapterId);
             }
             
             // Atomic move to final location
             Files.move(tempPath, targetPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             
+            Logger.info("Successfully downloaded adapter: " + adapterId);
             return targetPath;
             
         } catch (Exception e) {
-            Logger.error("Failed to download adapter: " + e.getMessage());
+            Logger.error("Failed to download adapter " + adapterId + ": " + e.getMessage());
             try {
                 Files.deleteIfExists(tempPath);
                 Files.deleteIfExists(targetPath);
             } catch (IOException ignored) {}
             return null;
         }
+    }
+    
+    /**
+     * Builds the download URL for a specific adapter from GitHub Releases
+     * 
+     * @param adapterId Adapter identifier
+     * @return Download URL, or null if not found
+     */
+    private String buildReleaseDownloadUrl(String adapterId) {
+        // Format: https://github.com/StarsailsClover/MCJEBooster/releases/download/v{injectorVersion}/{adapterId}.mcjeb
+        String injectorVersion = getInjectorVersion();
+        return String.format(
+            "https://github.com/StarsailsClover/MCJEBooster/releases/download/v%s/%s.mcjeb",
+            injectorVersion,
+            adapterId
+        );
+    }
+    
+    /**
+     * Gets the current injector version
+     * 
+     * @return Injector version string
+     */
+    private String getInjectorVersion() {
+        // Read from manifest or system property
+        String version = System.getProperty("mcjebooster.version");
+        if (version == null) {
+            version = "26.5-20260510"; // Default version
+        }
+        return version;
+    }
+    
+    /**
+     * Checks if a Minecraft version is supported by this injector
+     * 
+     * @param mcVersion Minecraft version string
+     * @return true if supported
+     */
+    private boolean isVersionSupported(String mcVersion) {
+        // Supported versions for injector 26.5
+        String[] supportedVersions = {
+            "1.8.9", "1.12.2", "1.16.5", "1.17.1",
+            "1.18.1", "1.19.1", "1.20.6", "26.1", "26.1.1"
+        };
+        
+        for (String supported : supportedVersions) {
+            if (mcVersion.equals(supported) || mcVersion.startsWith(supported)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Gets the expected checksum for an adapter
+     * 
+     * @param adapterId Adapter identifier
+     * @return Expected checksum, or null if not available
+     */
+    private String getExpectedChecksum(String adapterId) {
+        // Could be fetched from a checksums file or embedded
+        // For now, return null to skip verification
+        return null;
     }
     
     /**

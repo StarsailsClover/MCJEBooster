@@ -102,11 +102,30 @@ foreach ($file in $files) {
 }
 Write-Host "Checksums generated" -ForegroundColor Green
 
-# Create ZIP archive
-Write-Host "`nCreating ZIP archive..." -ForegroundColor Yellow
-$zipName = "MCJEBooster-$Version.zip"
-Compress-Archive -Path "$releaseDir\*" -DestinationPath "releases\$zipName" -Force
-Write-Host "Created $zipName" -ForegroundColor Green
+# Copy individual adapter files to release (not in ZIP)
+Write-Host "`nPreparing individual adapter files..." -ForegroundColor Yellow
+$adapterFiles = Get-ChildItem -Path "adapters" -Filter "*.mcjeb"
+foreach ($adapter in $adapterFiles) {
+    Copy-Item -Path $adapter.FullName -Destination "$releaseDir\$($adapter.Name)" -Force
+    Write-Host "  Copied $($adapter.Name)" -ForegroundColor Gray
+}
+Write-Host "Individual adapters ready for release" -ForegroundColor Green
+
+# Create minimal ZIP (core JAR only, adapters separate)
+Write-Host "`nCreating core ZIP archive..." -ForegroundColor Yellow
+$zipName = "MCJEBooster-Core-$Version.zip"
+$coreFiles = @("$releaseDir\MCJEBooster-$Version.jar", 
+               "$releaseDir\README.md", 
+               "$releaseDir\LICENSE",
+               "$releaseDir\checksums.sha256")
+Compress-Archive -Path $coreFiles -DestinationPath "releases\$zipName" -Force
+Write-Host "Created $zipName (core only)" -ForegroundColor Green
+
+# Create full ZIP (optional, includes all adapters)
+Write-Host "`nCreating full ZIP archive (optional)..." -ForegroundColor Yellow
+$fullZipName = "MCJEBooster-Full-$Version.zip"
+Compress-Archive -Path "$releaseDir\*" -DestinationPath "releases\$fullZipName" -Force
+Write-Host "Created $fullZipName (includes adapters)" -ForegroundColor Green
 
 # Calculate total size
 $totalSize = (Get-ChildItem -Path $releaseDir -File | Measure-Object -Property Length -Sum).Sum
