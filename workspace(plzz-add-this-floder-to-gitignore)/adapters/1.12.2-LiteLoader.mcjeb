@@ -1,0 +1,90 @@
+{
+  "adapterId": "1.12.2-LiteLoader",
+  "minecraftVersion": "1.12.2",
+  "loaderType": "LITELOADER",
+  "loaderVersion": "1.12.2",
+  "requiredJavaVersion": 8,
+  "adapterVersion": "1.0",
+  "priority": 110,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "World": "net.minecraft.world.World",
+    "WorldServer": "net.minecraft.world.WorldServer",
+    "Chunk": "net.minecraft.world.chunk.Chunk",
+    "Entity": "net.minecraft.entity.Entity",
+    "TileEntity": "net.minecraft.tileentity.TileEntity",
+    "ChunkProvider": "net.minecraft.world.chunk.ChunkProvider",
+    "ChunkProviderServer": "net.minecraft.world.gen.ChunkProviderServer",
+    "LiteLoader": "com.mumfrey.liteloader.LiteLoader",
+    "LiteLoaderEventBroker": "com.mumfrey.liteloader.core.LiteLoaderEventBroker"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tick": "tick",
+    "World.tickEntities": "updateEntities",
+    "World.tickBlocks": "tickBlocks",
+    "ChunkProvider.tick": "tick",
+    "Entity.onUpdate": "onUpdate",
+    "TileEntity.update": "update",
+    "LiteLoaderEventBroker.onTick": "onTick"
+  },
+  
+  "fieldMappings": {
+    "World.loadedEntityList": "loadedEntityList",
+    "World.loadedTileEntityList": "loadedTileEntityList",
+    "World.playerEntities": "playerEntities",
+    "MinecraftServer.worlds": "worlds"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tick": "()V",
+    "World.updateEntities": "()V",
+    "Entity.onUpdate": "()V",
+    "TileEntity.update": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tick",
+  "entityTickMethodTarget": "World.updateEntities",
+  "blockTickMethodTarget": "World.tickBlocks",
+  "chunkProviderClass": "ChunkProviderServer",
+  "worldClass": "WorldServer",
+  "entityClass": "Entity",
+  "entityListField": "loadedEntityList",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 3,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING"
+  ],
+  
+  "requiredJvmArgs": [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "liteLoaderSpecific": {
+    "modCompatibility": [
+      "worldedit",
+      "macrokey",
+      "tabbychat"
+    ],
+    "threadSafeMods": [],
+    "threadUnsafeMods": [
+      "minecraft"
+    ]
+  },
+  
+  "notes": [
+    "Java 8 required",
+    "LiteLoader 1.12.2",
+    "Usually used for client-side mods",
+    "Compatible with most LiteLoader mods"
+  ]
+}
