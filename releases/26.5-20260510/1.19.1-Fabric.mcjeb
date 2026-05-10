@@ -1,0 +1,105 @@
+{
+  "adapterId": "1.19.1-Fabric",
+  "minecraftVersion": "1.19.1",
+  "loaderType": "FABRIC",
+  "loaderVersion": "0.14.x",
+  "requiredJavaVersion": 17,
+  "adapterVersion": "1.0",
+  "priority": 110,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "ServerLevel": "net.minecraft.server.level.ServerLevel",
+    "Level": "net.minecraft.world.level.Level",
+    "LevelChunk": "net.minecraft.world.level.chunk.LevelChunk",
+    "Entity": "net.minecraft.world.entity.Entity",
+    "BlockEntity": "net.minecraft.world.level.block.entity.BlockEntity",
+    "ChunkSource": "net.minecraft.world.level.chunk.ChunkSource",
+    "ServerChunkCache": "net.minecraft.server.level.ServerChunkCache",
+    "ServerEntityManager": "net.minecraft.world.level.entity.ServerEntityManager",
+    "PersistentEntitySectionManager": "net.minecraft.world.level.entity.PersistentEntitySectionManager"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tickServer": "tickServer",
+    "ServerLevel.tick": "tick",
+    "ServerLevel.tickChunk": "tickChunk",
+    "ServerChunkCache.tick": "tick",
+    "Entity.tick": "tick",
+    "BlockEntity.tick": "tick",
+    "ServerEntityManager.tick": "tick",
+    "PersistentEntitySectionManager.tick": "tick"
+  },
+  
+  "fieldMappings": {
+    "Level.entities": "entitiesById",
+    "Level.blockEntities": "blockEntityTickers",
+    "Level.players": "players",
+    "MinecraftServer.levels": "levels",
+    "ServerLevel.entityManager": "entityManager",
+    "ServerLevel.entitySectionManager": "entitySectionManager"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tickServer": "(Ljava/util/function/BooleanSupplier;)V",
+    "ServerLevel.tick": "(Ljava/util/function/BooleanSupplier;)V",
+    "Entity.tick": "()V",
+    "BlockEntity.tick": "()V",
+    "ServerEntityManager.tick": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tickServer",
+  "entityTickMethodTarget": "ServerLevel.tick",
+  "blockTickMethodTarget": "ServerLevel.tickBlockEntities",
+  "chunkProviderClass": "ServerChunkCache",
+  "worldClass": "ServerLevel",
+  "entityClass": "Entity",
+  "entityListField": "entitiesById",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 4,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "ASYNC_CHUNK_LOADING",
+    "ASYNC_PATHFINDING",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING",
+    "FABRIC_API_COMPAT"
+  ],
+  
+  "requiredJvmArgs": [
+    "--add-opens=java.base/java.util.jar=ALL-UNNAMED",
+    "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "fabricSpecific": {
+    "mixinCompatibility": true,
+    "apiModules": [
+      "fabric-api-base",
+      "fabric-events-interaction-v0",
+      "fabric-lifecycle-events-v1",
+      "fabric-resource-loader-v0",
+      "fabric-dimensions-v1",
+      "fabric-message-api-v1"
+    ],
+    "threadSafeMods": [],
+    "threadUnsafeMods": [
+      "minecraft"
+    ]
+  },
+  
+  "notes": [
+    "Java 17 required",
+    "Fabric 0.14.x for 1.19.1",
+    "Uses Intermediary mappings",
+    "The Wild Update",
+    "Chat reporting system introduced",
+    "Fabric Message API for chat events"
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "adapterId": "1.16.5-Fabric",
+  "minecraftVersion": "1.16.5",
+  "loaderType": "FABRIC",
+  "loaderVersion": "0.11.x",
+  "requiredJavaVersion": 8,
+  "adapterVersion": "1.0",
+  "priority": 110,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "World": "net.minecraft.world.World",
+    "ServerWorld": "net.minecraft.server.world.ServerWorld",
+    "Chunk": "net.minecraft.world.chunk.WorldChunk",
+    "Entity": "net.minecraft.entity.Entity",
+    "BlockEntity": "net.minecraft.block.entity.BlockEntity",
+    "ChunkManager": "net.minecraft.server.world.ServerChunkManager",
+    "ServerChunkManager": "net.minecraft.server.world.ServerChunkManager"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tick": "tick",
+    "World.tickEntities": "tick",
+    "World.tickBlockEntities": "tickBlockEntities",
+    "ChunkManager.tick": "tick",
+    "Entity.tick": "tick",
+    "BlockEntity.tick": "tick"
+  },
+  
+  "fieldMappings": {
+    "World.entities": "entitiesById",
+    "World.blockEntities": "blockEntityTickers",
+    "World.players": "players",
+    "MinecraftServer.worlds": "worlds"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tick": "(Ljava/util/function/BooleanSupplier;)V",
+    "World.tick": "(Ljava/util/function/BooleanSupplier;)V",
+    "Entity.tick": "()V",
+    "BlockEntity.tick": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tick",
+  "entityTickMethodTarget": "World.tick",
+  "blockTickMethodTarget": "World.tickBlockEntities",
+  "chunkProviderClass": "ServerChunkManager",
+  "worldClass": "ServerWorld",
+  "entityClass": "Entity",
+  "entityListField": "entitiesById",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 4,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING",
+    "FABRIC_API_COMPAT"
+  ],
+  
+  "requiredJvmArgs": [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "fabricSpecific": {
+    "mixinCompatibility": true,
+    "apiModules": [
+      "fabric-api-base",
+      "fabric-events-interaction-v0",
+      "fabric-lifecycle-events-v1"
+    ],
+    "threadSafeMods": [],
+    "threadUnsafeMods": [
+      "minecraft"
+    ]
+  },
+  
+  "notes": [
+    "Java 8 compatible (Fabric supports Java 8+)",
+    "Uses Intermediary mappings",
+    "Mixin compatibility required",
+    "Fabric API lifecycle events on main thread"
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "adapterId": "1.12.2-Vanilla",
+  "minecraftVersion": "1.12.2",
+  "loaderType": "VANILLA",
+  "loaderVersion": null,
+  "requiredJavaVersion": 8,
+  "adapterVersion": "1.0",
+  "priority": 100,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "World": "net.minecraft.world.World",
+    "WorldServer": "net.minecraft.world.WorldServer",
+    "Chunk": "net.minecraft.world.chunk.Chunk",
+    "Entity": "net.minecraft.entity.Entity",
+    "TileEntity": "net.minecraft.tileentity.TileEntity",
+    "ChunkProvider": "net.minecraft.world.chunk.ChunkProvider",
+    "ChunkProviderServer": "net.minecraft.world.gen.ChunkProviderServer"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tick": "tick",
+    "World.tickEntities": "updateEntities",
+    "World.tickBlocks": "tickBlocks",
+    "ChunkProvider.tick": "tick",
+    "Entity.onUpdate": "onUpdate",
+    "TileEntity.update": "update"
+  },
+  
+  "fieldMappings": {
+    "World.loadedEntityList": "loadedEntityList",
+    "World.loadedTileEntityList": "loadedTileEntityList",
+    "World.playerEntities": "playerEntities",
+    "MinecraftServer.worlds": "worlds"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tick": "()V",
+    "World.updateEntities": "()V",
+    "Entity.onUpdate": "()V",
+    "TileEntity.update": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tick",
+  "entityTickMethodTarget": "World.updateEntities",
+  "blockTickMethodTarget": "World.tickBlocks",
+  "chunkProviderClass": "ChunkProviderServer",
+  "worldClass": "WorldServer",
+  "entityClass": "Entity",
+  "entityListField": "loadedEntityList",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 3,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING"
+  ],
+  
+  "requiredJvmArgs": [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "notes": [
+    "Java 8 required for Minecraft 1.12.2",
+    "Uses legacy obfuscation mappings",
+    "Entity ticking is the primary optimization target",
+    "Tile entities are ticked separately from blocks"
+  ]
+}

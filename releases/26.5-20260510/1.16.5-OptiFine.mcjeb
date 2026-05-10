@@ -1,0 +1,100 @@
+{
+  "adapterId": "1.16.5-OptiFine",
+  "minecraftVersion": "1.16.5",
+  "loaderType": "OPTIFINE",
+  "loaderVersion": "G8",
+  "requiredJavaVersion": 8,
+  "adapterVersion": "1.0",
+  "priority": 110,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "ServerLevel": "net.minecraft.server.level.ServerLevel",
+    "Level": "net.minecraft.world.level.Level",
+    "LevelChunk": "net.minecraft.world.level.chunk.LevelChunk",
+    "Entity": "net.minecraft.world.entity.Entity",
+    "BlockEntity": "net.minecraft.world.level.block.entity.BlockEntity",
+    "ChunkSource": "net.minecraft.world.level.chunk.ChunkSource",
+    "ServerChunkCache": "net.minecraft.server.level.ServerChunkCache",
+    "Config": "Config"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tickServer": "tickServer",
+    "ServerLevel.tick": "tick",
+    "ServerLevel.tickChunk": "tickChunk",
+    "ServerChunkCache.tick": "tick",
+    "Entity.tick": "tick",
+    "BlockEntity.tick": "tick"
+  },
+  
+  "fieldMappings": {
+    "Level.entities": "entitiesById",
+    "Level.blockEntities": "blockEntityTickers",
+    "Level.players": "players",
+    "MinecraftServer.levels": "levels",
+    "Config.ofSmoothFps": "ofSmoothFps",
+    "Config.ofSmoothWorld": "ofSmoothWorld",
+    "Config.ofFastRender": "ofFastRender",
+    "Config.ofLazyChunkLoading": "ofLazyChunkLoading"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tickServer": "(Ljava/util/function/BooleanSupplier;)V",
+    "ServerLevel.tick": "(Ljava/util/function/BooleanSupplier;)V",
+    "Entity.tick": "()V",
+    "BlockEntity.tick": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tickServer",
+  "entityTickMethodTarget": "ServerLevel.tick",
+  "blockTickMethodTarget": "ServerLevel.tickBlockEntities",
+  "chunkProviderClass": "ServerChunkCache",
+  "worldClass": "ServerLevel",
+  "entityClass": "Entity",
+  "entityListField": "entitiesById",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 4,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "ASYNC_CHUNK_LOADING",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING"
+  ],
+  
+  "requiredJvmArgs": [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "optiFineSpecific": {
+    "compatibleVersions": [
+      "G8",
+      "G9_pre1"
+    ],
+    "features": [
+      "smoothFps",
+      "smoothWorld",
+      "chunkUpdates",
+      "fastRender",
+      "lazyChunkLoading"
+    ],
+    "threadSafeOptions": [
+      "ofSmoothFps",
+      "ofFastRender",
+      "ofLazyChunkLoading"
+    ]
+  },
+  
+  "notes": [
+    "Java 8/11 compatible",
+    "OptiFine G8 for 1.16.5",
+    "Standalone OptiFine installation",
+    "Lazy chunk loading may conflict with async chunk loading"
+  ]
+}

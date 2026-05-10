@@ -1,0 +1,79 @@
+# MCJEBooster Git Ignore
+# ======================
+
+# Workspace directory - contains development environment and non-open files
+workspace(plzz-add-this-floder-to-gitignore)/
+workspace/
+*.workspace/
+
+# Minecraft game files (should not be in repo)
+.minecraft/
+.minecraft/**/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+*.sublime-*
+
+# Build outputs
+target/
+build/
+out/
+dist/
+*.jar
+!MCJEBooster-*.jar
+
+# Compiled class files
+*.class
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Test outputs
+test-output/
+coverage/
+
+# Local configuration
+*.local.properties
+config.local.json
+
+# Cache directories
+cache/
+.adapters-cache/
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Gradle
+.gradle/
+gradlew
+gradlew.bat
+
+# Node (if any web components)
+node_modules/
+npm-debug.log*
+
+# Documentation build
+docs/_build/
+docs/site/

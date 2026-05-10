@@ -1,0 +1,96 @@
+{
+  "adapterId": "1.8.9-OptiFine",
+  "minecraftVersion": "1.8.9",
+  "loaderType": "OPTIFINE",
+  "loaderVersion": "M5",
+  "requiredJavaVersion": 8,
+  "adapterVersion": "1.0",
+  "priority": 110,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "World": "net.minecraft.world.World",
+    "WorldServer": "net.minecraft.world.WorldServer",
+    "Chunk": "net.minecraft.world.chunk.Chunk",
+    "Entity": "net.minecraft.entity.Entity",
+    "TileEntity": "net.minecraft.tileentity.TileEntity",
+    "ChunkProvider": "net.minecraft.world.chunk.ChunkProvider",
+    "ChunkProviderServer": "net.minecraft.world.gen.ChunkProviderServer",
+    "Config": "Config",
+    "GameSettings": "net.minecraft.client.settings.GameSettings"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tick": "tick",
+    "World.tickEntities": "updateEntities",
+    "World.tickBlocks": "tickBlocks",
+    "ChunkProvider.tick": "tick",
+    "Entity.onUpdate": "onUpdate",
+    "TileEntity.update": "update"
+  },
+  
+  "fieldMappings": {
+    "World.loadedEntityList": "loadedEntityList",
+    "World.loadedTileEntityList": "loadedTileEntityList",
+    "World.playerEntities": "playerEntities",
+    "MinecraftServer.worldServers": "worldServers",
+    "Config.ofSmoothFps": "ofSmoothFps",
+    "Config.ofSmoothWorld": "ofSmoothWorld"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tick": "()V",
+    "World.updateEntities": "()V",
+    "Entity.onUpdate": "()V",
+    "TileEntity.update": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tick",
+  "entityTickMethodTarget": "World.updateEntities",
+  "blockTickMethodTarget": "World.tickBlocks",
+  "chunkProviderClass": "ChunkProviderServer",
+  "worldClass": "WorldServer",
+  "entityClass": "Entity",
+  "entityListField": "loadedEntityList",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 2,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING"
+  ],
+  
+  "requiredJvmArgs": [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "optiFineSpecific": {
+    "compatibleVersions": [
+      "M5",
+      "M6_pre1",
+      "M6_pre2"
+    ],
+    "features": [
+      "smoothFps",
+      "smoothWorld",
+      "chunkUpdates"
+    ],
+    "threadSafeOptions": [
+      "ofSmoothFps",
+      "ofFastRender"
+    ]
+  },
+  
+  "notes": [
+    "Java 8 required",
+    "OptiFine M5 for 1.8.9",
+    "OptiFine changes rendering, not tick logic",
+    "Compatible with MCJEBooster optimizations"
+  ]
+}

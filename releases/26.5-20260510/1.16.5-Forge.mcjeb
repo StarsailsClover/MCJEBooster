@@ -1,0 +1,95 @@
+{
+  "adapterId": "1.16.5-Forge",
+  "minecraftVersion": "1.16.5",
+  "loaderType": "FORGE",
+  "loaderVersion": "36.2.x",
+  "requiredJavaVersion": 8,
+  "adapterVersion": "1.0",
+  "priority": 110,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "ServerLevel": "net.minecraft.server.level.ServerLevel",
+    "Level": "net.minecraft.world.level.Level",
+    "LevelChunk": "net.minecraft.world.level.chunk.LevelChunk",
+    "Entity": "net.minecraft.world.entity.Entity",
+    "BlockEntity": "net.minecraft.world.level.block.entity.BlockEntity",
+    "ChunkSource": "net.minecraft.world.level.chunk.ChunkSource",
+    "ServerChunkCache": "net.minecraft.server.level.ServerChunkCache",
+    "MinecraftForge": "net.minecraftforge.common.MinecraftForge",
+    "ForgeEventBus": "net.minecraftforge.common.MinecraftForge.EVENT_BUS"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tickServer": "tickServer",
+    "ServerLevel.tick": "tick",
+    "ServerLevel.tickChunk": "tickChunk",
+    "ServerChunkCache.tick": "tick",
+    "Entity.tick": "tick",
+    "BlockEntity.tick": "tick",
+    "ForgeEventBus.post": "post"
+  },
+  
+  "fieldMappings": {
+    "Level.entities": "entitiesById",
+    "Level.blockEntities": "blockEntityTickers",
+    "Level.players": "players",
+    "MinecraftServer.levels": "levels",
+    "Forge.EVENT_BUS": "EVENT_BUS"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tickServer": "(Ljava/util/function/BooleanSupplier;)V",
+    "ServerLevel.tick": "(Ljava/util/function/BooleanSupplier;)V",
+    "Entity.tick": "()V",
+    "BlockEntity.tick": "()V",
+    "ForgeEventBus.post": "(Lnet/minecraftforge/eventbus/api/Event;)Z"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tickServer",
+  "entityTickMethodTarget": "ServerLevel.tick",
+  "blockTickMethodTarget": "ServerLevel.tickBlockEntities",
+  "chunkProviderClass": "ServerChunkCache",
+  "worldClass": "ServerLevel",
+  "entityClass": "Entity",
+  "entityListField": "entitiesById",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 4,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "ASYNC_CHUNK_LOADING",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING",
+    "FORGE_EVENT_BUS"
+  ],
+  
+  "requiredJvmArgs": [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "forgeSpecific": {
+    "eventBusCompatibility": true,
+    "modTickEvents": [
+      "net.minecraftforge.event.TickEvent.WorldTickEvent",
+      "net.minecraftforge.event.TickEvent.ServerTickEvent"
+    ],
+    "threadSafeMods": [],
+    "threadUnsafeMods": [
+      "minecraft",
+      "forge"
+    ]
+  },
+  
+  "notes": [
+    "Java 8/11 compatible",
+    "Forge 36.2.x for 1.16.5",
+    "Uses Mojang mappings",
+    "New Forge event bus in 1.13+"
+  ]
+}
