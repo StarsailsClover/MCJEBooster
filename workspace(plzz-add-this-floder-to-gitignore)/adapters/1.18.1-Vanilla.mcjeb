@@ -1,0 +1,78 @@
+{
+  "adapterId": "1.18.1-Vanilla",
+  "minecraftVersion": "1.18.1",
+  "loaderType": "VANILLA",
+  "loaderVersion": null,
+  "requiredJavaVersion": 17,
+  "adapterVersion": "1.0",
+  "priority": 100,
+  
+  "classMappings": {
+    "MinecraftServer": "net.minecraft.server.MinecraftServer",
+    "World": "net.minecraft.world.level.Level",
+    "ServerLevel": "net.minecraft.server.level.ServerLevel",
+    "Chunk": "net.minecraft.world.level.chunk.LevelChunk",
+    "Entity": "net.minecraft.world.entity.Entity",
+    "BlockEntity": "net.minecraft.world.level.block.entity.BlockEntity",
+    "ChunkSource": "net.minecraft.world.level.chunk.ChunkSource",
+    "ServerChunkCache": "net.minecraft.server.level.ServerChunkCache"
+  },
+  
+  "methodMappings": {
+    "MinecraftServer.tickServer": "tickServer",
+    "ServerLevel.tick": "tick",
+    "ServerLevel.tickNonPassenger": "tickNonPassenger",
+    "ChunkSource.tick": "tick",
+    "Entity.tick": "tick",
+    "BlockEntity.tick": "tick"
+  },
+  
+  "fieldMappings": {
+    "Level.entities": "entitiesById",
+    "Level.blockEntities": "blockEntityTickers",
+    "Level.players": "players",
+    "MinecraftServer.levels": "levels"
+  },
+  
+  "methodDescriptors": {
+    "MinecraftServer.tickServer": "(Ljava/util/function/BooleanSupplier;)V",
+    "ServerLevel.tick": "(Ljava/util/function/BooleanSupplier;)V",
+    "Entity.tick": "()V",
+    "BlockEntity.tick": "()V"
+  },
+  
+  "tickMethodTarget": "MinecraftServer.tickServer",
+  "entityTickMethodTarget": "ServerLevel.tick",
+  "blockTickMethodTarget": "ServerLevel.tickBlockEntities",
+  "chunkProviderClass": "ServerChunkCache",
+  "worldClass": "ServerLevel",
+  "entityClass": "Entity",
+  "entityListField": "entitiesById",
+  
+  "regionSize": 16,
+  "recommendedWorkerCount": 4,
+  "tickTimeoutMs": 45,
+  
+  "supportedFeatures": [
+    "MULTITHREADED_ENTITIES",
+    "MULTITHREADED_TILE_ENTITIES",
+    "ASYNC_CHUNK_LOADING",
+    "SYNC_POINT_BARRIERS",
+    "AUTO_ROLLBACK",
+    "DYNAMIC_REGION_BALANCING"
+  ],
+  
+  "requiredJvmArgs": [
+    "--add-opens=java.base/java.util.jar=ALL-UNNAMED",
+    "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=50"
+  ],
+  
+  "notes": [
+    "Java 17 required for Minecraft 1.18+",
+    "Uses Mojang mappings (official)",
+    "New chunk system in 1.18",
+    "Caves & Cliffs world generation changes"
+  ]
+}

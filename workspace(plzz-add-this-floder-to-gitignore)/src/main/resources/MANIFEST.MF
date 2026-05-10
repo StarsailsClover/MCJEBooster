@@ -1,0 +1,11 @@
+Manifest-Version: 1.0
+Agent-Class: com.mcjebooster.agent.MCJEBoosterAgent
+Premain-Class: com.mcjebooster.agent.MCJEBoosterAgent
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true
+Can-Set-Native-Method-Prefix: true
+Main-Class: com.mcjebooster.injector.InjectorMain
+Automatic-Module-Name: mcjebooster.agent
+Implementation-Title: MCJEBooster
+Implementation-Version: 26.1-05102026
+Implementation-Vendor: StarsailsClover

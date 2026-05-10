@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MCJEBooster - Minecraft Java Edition Multi-Core Optimization Engine
+  Version: v26.1-05102026 (Current commit count: 1)
+  
+  This is the Maven Project Object Model for the MCJEBooster project.
+  MCJEBooster is an independent third-party software injection project
+  that optimizes Minecraft Java Edition through JVM-level multi-core scheduling.
+  
+  IMPORTANT: This is NOT a Minecraft Mod. It is a standalone injection
+  tool that attaches to running Minecraft processes via Java Agent.
+  
+  Author: StarsailsClover (GitHub)
+  License: LGPL-2.1
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Project Identification -->
+    <groupId>com.mcjebooster</groupId>
+    <artifactId>mcjebooster-core</artifactId>
+    <version>26.1-05102026</version>
+    <packaging>jar</packaging>
+
+    <!-- Project Metadata -->
+    <name>MCJEBooster</name>
+    <description>Minecraft Java Edition Multi-Core Optimization Engine | Official Compatibility Pack | High-Compatibility JVM-Level Performance Library</description>
+    <url>https://github.com/StarsailsClover/MCJEBooster</url>
+
+    <!-- License Information -->
+    <licenses>
+        <license>
+            <name>GNU Lesser General Public License v2.1</name>
+            <url>https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <!-- Developer Information -->
+    <developers>
+        <developer>
+            <id>starsailsclover</id>
+            <name>StarsailsClover</name>
+            <url>https://github.com/StarsailsClover</url>
+        </developer>
+    </developers>
+
+    <!-- Source Control Management -->
+    <scm>
+        <connection>scm:git:git://github.com/StarsailsClover/MCJEBooster.git</connection>
+        <developerConnection>scm:git:ssh://github.com:StarsailsClover/MCJEBooster.git</developerConnection>
+        <url>https://github.com/StarsailsClover/MCJEBooster/tree/main</url>
+    </scm>
+
+    <!-- Properties -->
+    <properties>
+        <!-- Build Configuration -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        
+        <!-- Version Numbers -->
+        <asm.version>9.6</asm.version>
+        <junit.version>5.10.0</junit.version>
+        <slf4j.version>2.0.9</slf4j.version>
+        
+        <!-- Agent Configuration -->
+        <agent.class>com.mcjebooster.agent.MCJEBoosterAgent</agent.class>
+        <agent.can.redefine>true</agent.can.redefine>
+        <agent.can.retransform>true</agent.can.retransform>
+    </properties>
+
+    <!-- Dependency Management -->
+    <dependencies>
+        <!-- ASM - Bytecode manipulation library for runtime class transformation -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-tree</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-commons</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-util</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
+
+        <!-- JSON Processing -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20231013</version>
+        </dependency>
+
+        <!-- Java Attach API (tools.jar) - For dynamic process attachment -->
+        <dependency>
+            <groupId>com.sun</groupId>
+            <artifactId>tools</artifactId>
+            <version>1.8</version>
+            <scope>system</scope>
+            <systemPath>${java.home}/../lib/tools.jar</systemPath>
+        </dependency>
+
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- Build Configuration -->
+    <build>
+        <!-- Final Artifact Name -->
+        <finalName>MCJEBooster-${project.version}</finalName>
+
+        <plugins>
+            <!-- Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <compilerArgs>
+                        <arg>--add-opens</arg>
+                        <arg>java.instrument/sun.instrument=ALL-UNNAMED</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <!-- JAR Plugin - Configures the agent manifest -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <!-- Java Agent Configuration -->
+                            <Agent-Class>com.mcjebooster.agent.MCJEBoosterAgent</Agent-Class>
+                            <Premain-Class>com.mcjebooster.agent.MCJEBoosterAgent</Premain-Class>
+                            <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                            <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                            <Can-Set-Native-Method-Prefix>true</Can-Set-Native-Method-Prefix>
+                            <Main-Class>com.mcjebooster.injector.InjectorMain</Main-Class>
+                            <Automatic-Module-Name>mcjebooster.agent</Automatic-Module-Name>
+                            <Implementation-Title>MCJEBooster</Implementation-Title>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                            <Implementation-Vendor>StarsailsClover</Implementation-Vendor>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!-- Shade Plugin - Packages dependencies into the JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Agent-Class>com.mcjebooster.agent.MCJEBoosterAgent</Agent-Class>
+                                        <Premain-Class>com.mcjebooster.agent.MCJEBoosterAgent</Premain-Class>
+                                        <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                                        <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                                        <Can-Set-Native-Method-Prefix>true</Can-Set-Native-Method-Prefix>
+                                        <Main-Class>com.mcjebooster.injector.InjectorMain</Main-Class>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Surefire Plugin - For running tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- Distribution Management -->
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/StarsailsClover/MCJEBooster</url>
+        </repository>
+    </distributionManagement>
+</project>
