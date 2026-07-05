@@ -22,7 +22,7 @@
     <!-- Project Identification -->
     <groupId>com.mcjebooster</groupId>
     <artifactId>mcjebooster-core</artifactId>
-    <version>26.1-05102026</version>
+    <version>26.6-20260706</version>
     <packaging>jar</packaging>
 
     <!-- Project Metadata -->
@@ -149,8 +149,8 @@
                     <source>17</source>
                     <target>17</target>
                     <compilerArgs>
-                        <arg>--add-opens</arg>
-                        <arg>java.instrument/sun.instrument=ALL-UNNAMED</arg>
+                        <arg>--add-modules</arg>
+                        <arg>jdk.attach</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>

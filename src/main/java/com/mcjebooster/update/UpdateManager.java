@@ -418,7 +418,7 @@ public class UpdateManager {
      * @return true if supported
      */
     private boolean isVersionSupported(String mcVersion) {
-        // Supported versions for injector 26.5
+        // Supported versions for injector 26.6
         String[] supportedVersions = {
             "1.8.9", "1.12.2", "1.16.5", "1.17.1",
             "1.18.1", "1.19.1", "1.20.6", "26.1", "26.1.1"

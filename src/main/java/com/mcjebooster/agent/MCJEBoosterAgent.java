@@ -22,6 +22,8 @@ import java.lang.instrument.Instrumentation;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.ClassDefinition;
 import java.security.ProtectionDomain;
+import java.io.File;
+import java.util.jar.JarFile;
 
 import com.mcjebooster.transformer.MinecraftServerTransformer;
 import com.mcjebooster.scheduler.RegionScheduler;
@@ -106,6 +108,29 @@ public class MCJEBoosterAgent {
      * @param inst The Instrumentation instance
      * @throws Exception if initialization fails
      */
+    private static void appendAgentToBootstrap(Instrumentation inst) {
+        try {
+            File agentFile = new File(
+                MCJEBoosterAgent.class.getProtectionDomain()
+                    .getCodeSource()
+                    .getLocation()
+                    .toURI()
+            );
+            if (agentFile.isFile()) {
+                // Add agent jar to system classloader. The system classloader is the
+                // parent of the URLClassLoader that loads MinecraftServer (via -jar).
+                // This makes InjectionBridge visible to the transformed bytecode
+                // without causing loader constraint violations.
+                inst.appendToSystemClassLoaderSearch(new JarFile(agentFile));
+                Logger.info("Agent jar added to system classloader: " + agentFile.getName());
+            } else {
+                Logger.warn("Agent code source is not a jar file: " + agentFile);
+            }
+        } catch (Exception e) {
+            Logger.warn("Failed to append agent jar to classloader: " + e.getMessage());
+        }
+    }
+    
     private static synchronized void initialize(String agentArgs, Instrumentation inst) throws Exception {
         if (initialized) {
             Logger.warn("Agent already initialized, skipping duplicate initialization");
@@ -117,7 +142,7 @@ public class MCJEBoosterAgent {
         try {
             Logger.info("=========================================");
             Logger.info("MCJEBooster Multi-Core Optimization Engine");
-            Logger.info("Version: 26.1-05102026");
+            Logger.info("Version: 26.6-20260706");
             Logger.info("Author: StarsailsClover");
             Logger.info("License: LGPL-2.1");
             Logger.info("=========================================");
@@ -130,7 +155,10 @@ public class MCJEBoosterAgent {
             }
             Logger.info("Detected Minecraft version: " + detectedVersion);
             
-            // Step 2: Initialize adapter loader and load version-specific adapter
+            // Step 2: Add agent jar to system classloader so dependencies are visible
+            appendAgentToBootstrap(inst);
+            
+            // Step 3: Initialize adapter loader and load version-specific adapter
             AdapterLoader adapterLoader = AdapterLoader.getInstance();
             adapterLoader.initialize(null);
             
@@ -149,7 +177,7 @@ public class MCJEBoosterAgent {
                 }
             }
             
-            // Step 3: Verify retransformation capability
+            // Step 4: Verify retransformation capability
             if (!inst.isRetransformClassesSupported()) {
                 throw new UnsupportedOperationException(
                     "JVM does not support class retransformation. " +
@@ -157,15 +185,15 @@ public class MCJEBoosterAgent {
                 );
             }
             
-            // Step 4: Register the class file transformer
+            // Step 5: Register transformer
             ClassFileTransformer transformer = new MinecraftServerTransformer(detectedVersion, versionAdapter);
             inst.addTransformer(transformer, true);
             Logger.info("Class file transformer registered successfully");
             
-            // Step 5: Attempt to find and transform already loaded classes
+            // Step 6: Attempt to find and transform already loaded classes
             transformLoadedClasses(inst);
             
-            // Step 6: Initialize the region scheduler with adapter
+            // Step 7: Initialize the region scheduler with adapter
             RegionScheduler scheduler = RegionScheduler.getInstance();
             scheduler.initialize(detectedVersion, versionAdapter);
             Logger.info("Region scheduler initialized");
@@ -221,31 +249,25 @@ public class MCJEBoosterAgent {
     private static boolean isMinecraftServerClass(Class<?> clazz) {
         String className = clazz.getName();
         
+        // Skip standard library, bytecode manipulation, and internal classes
+        if (className.startsWith("java.") || className.startsWith("javax.") ||
+            className.startsWith("sun.") || className.startsWith("com.sun.") ||
+            className.startsWith("jdk.") || className.startsWith("org.objectweb.") ||
+            className.startsWith("com.mcjebooster.") || className.startsWith("jdk.")) {
+            return false;
+        }
+        
         // Check for common MinecraftServer class names across different mappings
         String[] possibleNames = {
             "net.minecraft.server.MinecraftServer",
             "net.minecraft.server.dedicated.DedicatedServer",
             "net.minecraft.class_3176", // Yarn intermediary
-            "axw", // Some obfuscated versions
         };
         
         for (String name : possibleNames) {
             if (className.equals(name) || className.endsWith("." + name)) {
                 return true;
             }
-        }
-        
-        // Additional heuristic: check for tick-related methods
-        try {
-            java.lang.reflect.Method[] methods = clazz.getDeclaredMethods();
-            for (java.lang.reflect.Method method : methods) {
-                String methodName = method.getName();
-                if (methodName.contains("tick") || methodName.contains("runTick")) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            // Ignore reflection errors
         }
         
         return false;

@@ -531,8 +531,8 @@ public class TaskScheduler {
         private final AtomicLong counter = new AtomicLong(0);
         
         @Override
-        public ForkJoinPool.ForkJoinWorkerThread newThread(ForkJoinPool pool) {
-            ForkJoinPool.ForkJoinWorkerThread thread = 
+        public ForkJoinWorkerThread newThread(ForkJoinPool pool) {
+            ForkJoinWorkerThread thread = 
                 ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             thread.setName("MCJEBooster-Worker-" + counter.incrementAndGet());
             return thread;

@@ -11,6 +11,7 @@ workspace/
 .minecraft/**/
 
 # IDE files
+.vs/
 .idea/
 *.iml
 *.ipr
@@ -35,6 +36,13 @@ dist/
 # Logs
 *.log
 logs/
+
+# Benchmark runtime artifacts
+benchmark/baseline/
+benchmark/injected/
+benchmark/*.txt
+benchmark/*.json
+benchmark/*.pid
 
 # OS files
 .DS_Store

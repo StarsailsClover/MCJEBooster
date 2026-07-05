@@ -19,7 +19,13 @@
 package com.mcjebooster.util;
 
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Properties;
+import java.util.jar.JarFile;
+import java.util.jar.JarEntry;
 
 /**
  * Minecraft Version Detector
@@ -71,6 +77,12 @@ public class VersionDetector {
             return version;
         }
         
+        version = detectFromServerJar();
+        if (version != null) {
+            cachedVersion = version;
+            return version;
+        }
+        
         version = detectFromClassNames();
         if (version != null) {
             cachedVersion = version;
@@ -104,6 +116,7 @@ public class VersionDetector {
     private static String detectFromSystemProperties() {
         // Check for common version properties
         String[] propertyKeys = {
+            "mcjebooster.minecraftVersion",
             "minecraft.version",
             "mc.version",
             "game.version",
@@ -119,6 +132,81 @@ public class VersionDetector {
             }
         }
         
+        return null;
+    }
+    
+    /**
+     * Attempts to detect version from the server JAR on the classpath.
+     * Reads version.json from the root of the Minecraft server JAR.
+     * 
+     * @return The version string, or null if not found
+     */
+    private static String detectFromServerJar() {
+        // Method 1: Scan classpath URLs (works with URLClassLoader)
+        try {
+            ClassLoader cl = ClassLoader.getSystemClassLoader();
+            if (cl instanceof URLClassLoader) {
+                URL[] urls = ((URLClassLoader) cl).getURLs();
+                for (URL url : urls) {
+                    String version = tryReadVersionFromJarPath(url.getPath());
+                    if (version != null) return version;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        
+        // Method 2: Scan java.class.path (works for -jar in Java 9+)
+        try {
+            String classPath = System.getProperty("java.class.path");
+            if (classPath != null) {
+                for (String entry : classPath.split(java.io.File.pathSeparator)) {
+                    String version = tryReadVersionFromJarPath(entry);
+                    if (version != null) return version;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        
+        return null;
+    }
+    
+    private static String tryReadVersionFromJarPath(String path) {
+        if (path == null || !path.toLowerCase().endsWith(".jar")) return null;
+        try (JarFile jar = new JarFile(new java.io.File(path))) {
+            JarEntry entry = jar.getJarEntry("version.json");
+            if (entry != null) {
+                String version = readVersionFromJson(jar.getInputStream(entry));
+                if (version != null) {
+                    Logger.info("Detected version from server JAR: " + version);
+                    return normalizeVersion(version);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+    
+    private static String readVersionFromJson(InputStream stream) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            String json = sb.toString();
+            int idIdx = json.indexOf("\"id\"");
+            if (idIdx >= 0) {
+                int colonIdx = json.indexOf(':', idIdx);
+                if (colonIdx >= 0) {
+                    int startQuote = json.indexOf('"', colonIdx + 1);
+                    int endQuote = json.indexOf('"', startQuote + 1);
+                    if (startQuote >= 0 && endQuote > startQuote) {
+                        return json.substring(startQuote + 1, endQuote);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
         return null;
     }
     
@@ -202,10 +290,8 @@ public class VersionDetector {
      * @return Array of loaded classes
      */
     private static Class<?>[] getAllLoadedClasses() {
-        // Try to use instrumentation if available
-        java.lang.instrument.Instrumentation inst = 
-            com.mcjebooster.agent.MCJEBoosterAgent.getInstrumentation();
-        
+        // Try to use instrumentation if available without creating a compile-time cycle.
+        java.lang.instrument.Instrumentation inst = getAgentInstrumentation();
         if (inst != null) {
             return inst.getAllLoadedClasses();
         }
@@ -213,6 +299,16 @@ public class VersionDetector {
         // Fallback: get classes from the system class loader
         // This is less comprehensive but works without instrumentation
         return new Class<?>[0];
+    }
+    
+    private static java.lang.instrument.Instrumentation getAgentInstrumentation() {
+        try {
+            Class<?> agentClass = Class.forName("com.mcjebooster.agent.MCJEBoosterAgent");
+            Object value = agentClass.getMethod("getInstrumentation").invoke(null);
+            return (java.lang.instrument.Instrumentation) value;
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            return null;
+        }
     }
     
     /**

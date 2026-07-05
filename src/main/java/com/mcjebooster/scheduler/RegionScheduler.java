@@ -21,6 +21,7 @@ package com.mcjebooster.scheduler;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.*;
 
 import com.mcjebooster.util.Logger;
@@ -81,7 +82,7 @@ public class RegionScheduler {
     private volatile long tickCount = 0;
     
     /** Flag indicating if the scheduler is running */
-    private volatile boolean running = false;
+    private final AtomicBoolean running = new AtomicBoolean(false);
     
     /** Flag indicating if the scheduler is alive (threads not dead) */
     private volatile boolean alive = true;
@@ -165,7 +166,7 @@ public class RegionScheduler {
         // Initialize regions based on world size
         initializeRegions();
         
-        running = true;
+        running.set(true);
         alive = true;
         
         Logger.info("RegionScheduler initialization completed");
@@ -303,15 +304,75 @@ public class RegionScheduler {
      * @param minecraftServer The MinecraftServer instance
      */
     private void tickEntitiesInRegion(Region region, Object minecraftServer) {
-        // This method would use reflection to access Minecraft's entity list
-        // and tick only entities within the region bounds
-        // Implementation depends on Minecraft version
-        
-        // Placeholder for actual implementation
-        // In production, this would:
-        // 1. Get the server's entity manager
-        // 2. Filter entities by region bounds
-        // 3. Call entity.tick() for each entity
+        try {
+            // 获取所有世界/Level
+            Object levelsObj = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                minecraftServer,
+                "levels",           // Mojang mapping
+                "worlds",           // Some versions
+                "worldServers",     // Older versions
+                "field_71305_c"     // MCP obfuscated
+            );
+            
+            if (levelsObj == null) {
+                return;
+            }
+            
+            // levelsObj 可能是 Iterable 或 Map
+            Iterable<?> levels;
+            if (levelsObj instanceof Iterable) {
+                levels = (Iterable<?>) levelsObj;
+            } else if (levelsObj instanceof java.util.Map) {
+                levels = ((java.util.Map<?, ?>) levelsObj).values();
+            } else {
+                return;
+            }
+            
+            // 遍历每个世界
+            for (Object level : levels) {
+                if (level == null) continue;
+                
+                // 获取实体列表
+                java.util.Collection<?> entities = com.mcjebooster.util.ReflectionHelper.getCollectionField(
+                    level,
+                    "entitiesById",         // 1.20+ Mojang
+                    "entities",             // Older Mojang
+                    "loadedEntityList",     // Some versions
+                    "field_72996_f"         // MCP obfuscated
+                );
+                
+                // Tick 区域内的实体
+                for (Object entity : entities) {
+                    if (entity == null) continue;
+                    
+                    // 获取实体位置
+                    Object posX = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                        entity, "x", "posX", "field_70165_t"
+                    );
+                    Object posZ = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                        entity, "z", "posZ", "field_70161_v"
+                    );
+                    
+                    if (posX == null || posZ == null) continue;
+                    
+                    // 转换为区块坐标
+                    int chunkX = ((Number) posX).intValue() >> 4;
+                    int chunkZ = ((Number) posZ).intValue() >> 4;
+                    
+                    // 检查是否在当前区域内
+                    if (region.contains(chunkX, chunkZ)) {
+                        // 调用实体的 tick 方法
+                        com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                            entity,
+                            new String[]{"tick", "onUpdate", "func_70071_h_"}
+                        );
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            Logger.error("Error ticking entities in region " + region.getId() + ": " + e.getMessage());
+        }
     }
     
     /**
@@ -321,7 +382,69 @@ public class RegionScheduler {
      * @param minecraftServer The MinecraftServer instance
      */
     private void tickBlocksInRegion(Region region, Object minecraftServer) {
-        // Placeholder for block ticking implementation
+        try {
+            // 获取所有世界
+            Object levelsObj = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                minecraftServer,
+                "levels", "worlds", "worldServers", "field_71305_c"
+            );
+            
+            if (levelsObj == null) {
+                return;
+            }
+            
+            Iterable<?> levels;
+            if (levelsObj instanceof Iterable) {
+                levels = (Iterable<?>) levelsObj;
+            } else if (levelsObj instanceof java.util.Map) {
+                levels = ((java.util.Map<?, ?>) levelsObj).values();
+            } else {
+                return;
+            }
+            
+            // 遍历每个世界
+            for (Object level : levels) {
+                if (level == null) continue;
+                
+                // 获取区块缓存/提供器
+                Object chunkSource = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                    level,
+                    "chunkSource",          // Mojang
+                    "chunkProvider",        // Older
+                    "field_73020_y"         // MCP obfuscated
+                );
+                
+                if (chunkSource == null) continue;
+                
+                // 遍历区域内的区块
+                for (int x = region.getMinX(); x < region.getMaxX(); x++) {
+                    for (int z = region.getMinZ(); z < region.getMaxZ(); z++) {
+                        try {
+                            // 获取区块（不强制加载）
+                            Object chunk = com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                                chunkSource,
+                                new String[]{"getChunkNow", "getChunkIfLoaded", "func_217213_a"},
+                                x, z
+                            );
+                            
+                            if (chunk != null) {
+                                // 调用区块的 tick 方法
+                                com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                                    chunk,
+                                    new String[]{"tick", "tickChunk", "func_150804_b"},
+                                    false  // 随机 tick 参数
+                                );
+                            }
+                        } catch (Exception e) {
+                            // 忽略单个区块的错误
+                        }
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            Logger.error("Error ticking blocks in region " + region.getId() + ": " + e.getMessage());
+        }
     }
     
     /**
@@ -331,7 +454,102 @@ public class RegionScheduler {
      * @param minecraftServer The MinecraftServer instance
      */
     private void tickTileEntitiesInRegion(Region region, Object minecraftServer) {
-        // Placeholder for tile entity ticking implementation
+        try {
+            // 获取所有世界
+            Object levelsObj = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                minecraftServer,
+                "levels", "worlds", "worldServers", "field_71305_c"
+            );
+            
+            if (levelsObj == null) {
+                return;
+            }
+            
+            Iterable<?> levels;
+            if (levelsObj instanceof Iterable) {
+                levels = (Iterable<?>) levelsObj;
+            } else if (levelsObj instanceof java.util.Map) {
+                levels = ((java.util.Map<?, ?>) levelsObj).values();
+            } else {
+                return;
+            }
+            
+            // 遍历每个世界
+            for (Object level : levels) {
+                if (level == null) continue;
+                
+                // 获取方块实体列表（BlockEntity/TileEntity）
+                java.util.Collection<?> blockEntities = com.mcjebooster.util.ReflectionHelper.getCollectionField(
+                    level,
+                    "blockEntityTickers",       // 1.20+ Mojang
+                    "blockEntities",            // Older Mojang
+                    "loadedTileEntityList",     // Legacy
+                    "tickableBlockEntities",    // Some versions
+                    "field_147482_g"            // MCP obfuscated
+                );
+                
+                // Tick 区域内的方块实体
+                for (Object blockEntity : blockEntities) {
+                    if (blockEntity == null) continue;
+                    
+                    // 获取方块实体位置
+                    Object pos = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                        blockEntity,
+                        "worldPosition",    // Mojang 1.20+
+                        "pos",              // Older Mojang
+                        "blockPos",         // Some versions
+                        "field_174879_c"    // MCP obfuscated
+                    );
+                    
+                    if (pos == null) {
+                        // 尝试直接获取坐标
+                        Object x = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                            blockEntity, "x", "xCoord", "field_174879_c"
+                        );
+                        Object z = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+                            blockEntity, "z", "zCoord", "field_174881_e"
+                        );
+                        
+                        if (x != null && z != null) {
+                            int chunkX = ((Number) x).intValue() >> 4;
+                            int chunkZ = ((Number) z).intValue() >> 4;
+                            
+                            if (region.contains(chunkX, chunkZ)) {
+                                // 调用方块实体的 tick 方法
+                                com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                                    blockEntity,
+                                    new String[]{"tick", "update", "func_73660_a"}
+                                );
+                            }
+                        }
+                    } else {
+                        // pos 是 BlockPos 对象
+                        Object x = com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                            pos, new String[]{"getX", "x", "func_177958_n"}
+                        );
+                        Object z = com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                            pos, new String[]{"getZ", "z", "func_177952_p"}
+                        );
+                        
+                        if (x != null && z != null) {
+                            int chunkX = ((Number) x).intValue() >> 4;
+                            int chunkZ = ((Number) z).intValue() >> 4;
+                            
+                            if (region.contains(chunkX, chunkZ)) {
+                                // 调用方块实体的 tick 方法
+                                com.mcjebooster.util.ReflectionHelper.invokeMethod(
+                                    blockEntity,
+                                    new String[]{"tick", "update", "func_73660_a"}
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            Logger.error("Error ticking tile entities in region " + region.getId() + ": " + e.getMessage());
+        }
     }
     
     /**
@@ -452,7 +670,7 @@ public class RegionScheduler {
      */
     public void shutdown() {
         Logger.info("Shutting down RegionScheduler...");
-        running = false;
+        running.set(false);
         alive = false;
         
         if (workerPool != null) {
@@ -478,7 +696,7 @@ public class RegionScheduler {
      * @return true if the scheduler is active
      */
     public boolean isRunning() {
-        return running;
+        return running.get();
     }
     
     /**
@@ -598,13 +816,5 @@ public class RegionScheduler {
         public String toString() {
             return "Region[" + id + "] (" + minX + "," + minZ + ") to (" + maxX + "," + maxZ + ")";
         }
-    }
-    
-    /**
-     * AtomicLong implementation for conflict counting
-     * (Using standard java.util.concurrent.atomic.AtomicLong)
-     */
-    private static class AtomicLong extends java.util.concurrent.atomic.AtomicLong {
-        // Inherits all functionality from parent
     }
 }

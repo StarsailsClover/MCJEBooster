@@ -109,21 +109,18 @@ public class AdapterLoader {
     private Path findDefaultAdaptersDirectory() {
         try {
             // Try to locate relative to the running JAR
-            String jarPath = AdapterLoader.class.getProtectionDomain()
-                .getCodeSource()
-                .getLocation()
-                .toURI()
-                .getPath();
-            
-            Path jarDir = new File(jarPath).getParentFile().toPath();
-            Path adaptersDir = jarDir.resolve(DEFAULT_ADAPTERS_DIR);
-            
-            if (Files.exists(adaptersDir)) {
-                return adaptersDir;
+            java.security.ProtectionDomain pd = AdapterLoader.class.getProtectionDomain();
+            if (pd != null && pd.getCodeSource() != null && pd.getCodeSource().getLocation() != null) {
+                String jarPath = pd.getCodeSource().getLocation().toURI().getPath();
+                Path jarDir = new File(jarPath).getParentFile().toPath();
+                Path adaptersDir = jarDir.resolve(DEFAULT_ADAPTERS_DIR);
+                if (Files.exists(adaptersDir)) {
+                    return adaptersDir;
+                }
             }
             
             // Try current working directory
-            adaptersDir = Paths.get(DEFAULT_ADAPTERS_DIR);
+            Path adaptersDir = Paths.get(DEFAULT_ADAPTERS_DIR);
             if (Files.exists(adaptersDir)) {
                 return adaptersDir;
             }
@@ -181,28 +178,14 @@ public class AdapterLoader {
      * @throws IOException if reading fails
      */
     private String extractAdapterId(Path path) throws IOException {
-        try (JarFile jarFile = new JarFile(path.toFile())) {
-            JarEntry manifestEntry = jarFile.getJarEntry(MANIFEST_ENTRY);
-            if (manifestEntry == null) {
-                // Try to extract from filename
-                String fileName = path.getFileName().toString();
-                return fileName.substring(0, fileName.length() - ADAPTER_EXTENSION.length());
-            }
-            
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(jarFile.getInputStream(manifestEntry)))) {
-                // Parse JSON to get adapter ID
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                }
-                
-                // Simple JSON parsing for adapterId field
-                String json = sb.toString();
-                return extractJsonField(json, "adapterId");
-            }
+        String content = new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+        String adapterId = extractJsonField(content, "adapterId");
+        if (adapterId != null && !adapterId.isEmpty()) {
+            return adapterId;
         }
+        // Fallback: derive from filename
+        String fileName = path.getFileName().toString();
+        return fileName.substring(0, fileName.length() - ADAPTER_EXTENSION.length());
     }
     
     /**
@@ -293,14 +276,10 @@ public class AdapterLoader {
                                  String loaderVersion) {
         StringBuilder sb = new StringBuilder();
         sb.append(minecraftVersion);
-        
-        if (loaderType != VersionAdapter.LoaderType.VANILLA) {
-            sb.append("-").append(loaderType.name());
-            if (loaderVersion != null && !loaderVersion.isEmpty()) {
-                sb.append("_").append(loaderVersion);
-            }
+        sb.append("-").append(loaderType.name());
+        if (loaderVersion != null && !loaderVersion.isEmpty()) {
+            sb.append("_").append(loaderVersion);
         }
-        
         return sb.toString();
     }
     

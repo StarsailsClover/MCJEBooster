@@ -198,7 +198,7 @@ public class Logger {
     /**
      * Logs a warning message
      * 
-     * @param message The message to log
+     * @param message The warning message
      */
     public static void warn(String message) {
         log(LogLevel.WARN, message);

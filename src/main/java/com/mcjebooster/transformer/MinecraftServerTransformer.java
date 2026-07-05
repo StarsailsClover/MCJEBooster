@@ -61,9 +61,6 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
     private static final java.util.concurrent.atomic.AtomicInteger transformCount = 
         new java.util.concurrent.atomic.AtomicInteger(0);
     
-    /** The version adapter for version-specific transformations */
-    private final VersionAdapter versionAdapter;
-    
     /**
      * Constructs a new transformer for the specified Minecraft version
      * 
@@ -120,9 +117,10 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
             return null;
         }
         
-        // Skip Java standard library classes
+        // Skip Java standard library, internal, and bytecode manipulation classes
         if (className.startsWith("java/") || className.startsWith("javax/") || 
-            className.startsWith("sun/") || className.startsWith("com/sun/")) {
+            className.startsWith("sun/") || className.startsWith("com/sun/") ||
+            className.startsWith("jdk/") || className.startsWith("org/")) {
             return null;
         }
         
@@ -177,7 +175,6 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
             "net/minecraft/server/MinecraftServer",
             "net/minecraft/server/dedicated/DedicatedServer",
             "net/minecraft/class_3176", // Yarn intermediary
-            "axw", // Some obfuscated versions
             "MinecraftServer"
         };
         
@@ -200,14 +197,15 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
      */
     private boolean isChunkProviderClass(String className) {
         String[] providerNames = {
+            "net/minecraft/server/level/ChunkMap",
+            "net/minecraft/world/level/chunk/ChunkSource",
+            "net/minecraft/server/level/ServerChunkCache",
             "net/minecraft/world/chunk/ChunkProvider",
-            "net/minecraft/class_1937", // Some versions
-            "ChunkProvider",
-            "ServerChunkCache"
+            "net/minecraft/class_1937",
         };
         
         for (String name : providerNames) {
-            if (className.contains(name)) {
+            if (className.equals(name) || className.endsWith("/" + name)) {
                 return true;
             }
         }
@@ -223,15 +221,14 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
      */
     private boolean isLevelClass(String className) {
         String[] levelNames = {
+            "net/minecraft/server/level/ServerLevel",
+            "net/minecraft/world/level/Level",
             "net/minecraft/world/World",
-            "net/minecraft/world/Level",
             "net/minecraft/class_1937",
-            "ServerLevel",
-            "WorldServer"
         };
         
         for (String name : levelNames) {
-            if (className.contains(name)) {
+            if (className.equals(name) || className.endsWith("/" + name)) {
                 return true;
             }
         }
@@ -252,20 +249,16 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
             cr.accept(cn, ClassReader.EXPAND_FRAMES);
             
             boolean modified = false;
+            MethodNode tickMethod = findBestTickMethod(cn);
             
-            // Find and transform the tick method
-            for (MethodNode method : cn.methods) {
-                if (isTickMethod(method)) {
-                    Logger.info("Found tick method: " + method.name + " " + method.desc);
-                    injectMultithreadedTick(method);
-                    modified = true;
-                }
+            if (tickMethod != null) {
+                Logger.info("Found tick method: " + tickMethod.name + " " + tickMethod.desc);
+                injectMultithreadedTick(tickMethod);
+                modified = true;
             }
             
             if (modified) {
-                ClassWriter cw = new ClassWriter(
-                    ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES
-                );
+                ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
                 cn.accept(cw);
                 transformed = true;
                 transformCount.incrementAndGet();
@@ -288,8 +281,34 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
      * @return The transformed class bytes
      */
     private byte[] transformChunkProvider(byte[] classBytes) {
-        // Placeholder for chunk provider transformation
-        // This would modify chunk tick scheduling
+        try {
+            ClassReader cr = new ClassReader(classBytes);
+            ClassNode cn = new ClassNode();
+            cr.accept(cn, ClassReader.EXPAND_FRAMES);
+            
+            boolean modified = false;
+            
+            // Find and transform chunk tick methods
+            for (MethodNode method : cn.methods) {
+                if (isChunkTickMethod(method)) {
+                    Logger.info("Found chunk tick method: " + method.name + " " + method.desc);
+                    // 区块 tick 已经通过 RegionScheduler 处理，这里标记但不修改
+                    modified = true;
+                }
+            }
+            
+            if (modified) {
+                ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+                cn.accept(cw);
+                transformCount.incrementAndGet();
+                Logger.info("Successfully transformed ChunkProvider class");
+                return cw.toByteArray();
+            }
+            
+        } catch (Exception e) {
+            Logger.error("Failed to transform ChunkProvider: " + e.getMessage());
+        }
+        
         return null;
     }
     
@@ -300,8 +319,106 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
      * @return The transformed class bytes
      */
     private byte[] transformLevel(byte[] classBytes) {
-        // Placeholder for level transformation
-        // This would modify entity tick scheduling
+        try {
+            ClassReader cr = new ClassReader(classBytes);
+            ClassNode cn = new ClassNode();
+            cr.accept(cn, ClassReader.EXPAND_FRAMES);
+            
+            boolean modified = false;
+            
+            // Find and transform entity tick methods
+            for (MethodNode method : cn.methods) {
+                if (isEntityTickMethod(method)) {
+                    Logger.info("Found entity tick method: " + method.name + " " + method.desc);
+                    // 实体 tick 已经通过 RegionScheduler 处理，这里标记但不修改
+                    modified = true;
+                }
+            }
+            
+            if (modified) {
+                ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+                cn.accept(cw);
+                transformCount.incrementAndGet();
+                Logger.info("Successfully transformed Level class");
+                return cw.toByteArray();
+            }
+            
+        } catch (Exception e) {
+            Logger.error("Failed to transform Level: " + e.getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Checks if a method is a chunk tick method
+     * 
+     * @param method The method to check
+     * @return true if this is a chunk tick method
+     */
+    private boolean isChunkTickMethod(MethodNode method) {
+        String[] chunkTickNames = {
+            "tick", "tickChunk", "tickChunks", "func_73156_b"
+        };
+        
+        for (String name : chunkTickNames) {
+            if (method.name.equals(name)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Checks if a method is an entity tick method
+     * 
+     * @param method The method to check
+     * @return true if this is an entity tick method
+     */
+    private boolean isEntityTickMethod(MethodNode method) {
+        String[] entityTickNames = {
+            "tickEntities", "tickNonPassenger", "guardEntityTick", "func_217390_a"
+        };
+        
+        for (String name : entityTickNames) {
+            if (method.name.equals(name)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Finds the best matching main tick method in MinecraftServer.
+     * Modern vanilla builds can use fully obfuscated names such as a(BooleanSupplier),
+     * so this uses descriptors and bytecode features instead of relying on names.
+     *
+     * @param classNode The MinecraftServer class node
+     * @return the best tick method, or null if no safe candidate is found
+     */
+    private MethodNode findBestTickMethod(ClassNode classNode) {
+        MethodNode best = null;
+        int bestScore = 0;
+        
+        for (MethodNode method : classNode.methods) {
+            int score = scoreTickMethod(method);
+            if (score > 0) {
+                Logger.info("Tick candidate: " + method.name + " " + method.desc + " score=" + score);
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = method;
+            }
+        }
+        
+        if (best != null && bestScore >= 80) {
+            Logger.info("Selected tick candidate: " + best.name + " " + best.desc + " score=" + bestScore);
+            return best;
+        }
+        
+        Logger.warn("No safe MinecraftServer tick method candidate found; bestScore=" + bestScore);
         return null;
     }
     
@@ -347,6 +464,88 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
         
         // If name doesn't match, check bytecode patterns
         return hasTickPattern(method);
+    }
+    
+    /**
+     * Scores how likely a method is to be the main server tick entry.
+     *
+     * @param method The method to score
+     * @return likelihood score
+     */
+    private int scoreTickMethod(MethodNode method) {
+        if ((method.access & (ACC_ABSTRACT | ACC_NATIVE | ACC_STATIC)) != 0) {
+            return 0;
+        }
+        
+        int score = 0;
+        
+        if ("(Ljava/util/function/BooleanSupplier;)V".equals(method.desc)) {
+            score += 50;
+        } else if ("()V".equals(method.desc)) {
+            score += 20;
+        } else {
+            return 0;
+        }
+        
+        if (method.name.equals("tick") || method.name.equals("runTick") ||
+            method.name.equals("tickServer") || method.name.equals("method_3748") ||
+            method.name.equals("m_5705_") || method.name.equals("a")) {
+            score += 20;
+        }
+        
+        boolean callsBooleanSupplierTick = false;
+        boolean hasProfilerTickSection = false;
+        boolean hasLevelIteration = false;
+        boolean hasTiming = false;
+        boolean hasPlayerOrConnectionTick = false;
+        int methodCalls = 0;
+        int fieldWrites = 0;
+        
+        for (AbstractInsnNode insn : method.instructions) {
+            if (insn instanceof MethodInsnNode) {
+                MethodInsnNode minsn = (MethodInsnNode) insn;
+                methodCalls++;
+                
+                if (minsn.desc != null && minsn.desc.contains("Ljava/util/function/BooleanSupplier;") &&
+                    minsn.name.length() <= 4) {
+                    callsBooleanSupplierTick = true;
+                }
+                if ((minsn.name.equals("nanoTime") && minsn.owner.equals("java/lang/System")) ||
+                    (minsn.name.equals("d") && minsn.desc.equals("()J"))) {
+                    hasTiming = true;
+                }
+                if (minsn.owner.equals("java/lang/Iterable") || minsn.owner.equals("java/util/Iterator") ||
+                    minsn.owner.equals("java/util/Collection") || minsn.owner.equals("java/util/List")) {
+                    hasLevelIteration = true;
+                }
+                if (minsn.name.equals("tick") || minsn.name.equals("update") || minsn.name.equals("process") ||
+                    minsn.name.equals("forEach") || minsn.name.equals("d")) {
+                    hasPlayerOrConnectionTick = true;
+                }
+            } else if (insn instanceof FieldInsnNode) {
+                FieldInsnNode finsn = (FieldInsnNode) insn;
+                if (finsn.getOpcode() == PUTFIELD) {
+                    fieldWrites++;
+                }
+            } else if (insn instanceof LdcInsnNode) {
+                Object cst = ((LdcInsnNode) insn).cst;
+                if ("tick".equals(cst) || "levels".equals(cst) || "connection".equals(cst) ||
+                    "players".equals(cst) || "tallying".equals(cst)) {
+                    hasProfilerTickSection = true;
+                }
+            }
+        }
+        
+        if (callsBooleanSupplierTick) score += 35;
+        if (hasProfilerTickSection) score += 30;
+        if (hasLevelIteration) score += 20;
+        if (hasTiming) score += 15;
+        if (hasPlayerOrConnectionTick) score += 10;
+        if (methodCalls >= 8) score += 10;
+        if (fieldWrites >= 2) score += 10;
+        if (method.instructions.size() > 120) score += 10;
+        
+        return score;
     }
     
     /**
@@ -405,23 +604,11 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
         // Create the injection code
         InsnList injectCode = new InsnList();
         
-        // Call: RegionScheduler.getInstance().tickRegions(this)
-        // LOAD the scheduler instance
+        // Call: InjectionBridge.tickRegions(this)
+        injectCode.add(new VarInsnNode(ALOAD, 0));
         injectCode.add(new MethodInsnNode(
             INVOKESTATIC,
-            "com/mcjebooster/scheduler/RegionScheduler",
-            "getInstance",
-            "()Lcom/mcjebooster/scheduler/RegionScheduler;",
-            false
-        ));
-        
-        // LOAD 'this' (MinecraftServer instance)
-        injectCode.add(new VarInsnNode(ALOAD, 0));
-        
-        // CALL tickRegions
-        injectCode.add(new MethodInsnNode(
-            INVOKEVIRTUAL,
-            "com/mcjebooster/scheduler/RegionScheduler",
+            "com/mcjebooster/agent/InjectionBridge",
             "tickRegions",
             "(Ljava/lang/Object;)V",
             false
