@@ -104,15 +104,6 @@
             <version>20231013</version>
         </dependency>
 
-        <!-- Java Attach API (tools.jar) - For dynamic process attachment -->
-        <dependency>
-            <groupId>com.sun</groupId>
-            <artifactId>tools</artifactId>
-            <version>1.8</version>
-            <scope>system</scope>
-            <systemPath>${java.home}/../lib/tools.jar</systemPath>
-        </dependency>
-
         <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>

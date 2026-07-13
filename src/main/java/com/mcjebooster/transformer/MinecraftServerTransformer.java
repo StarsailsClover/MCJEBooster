@@ -253,8 +253,12 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
             
             if (tickMethod != null) {
                 Logger.info("Found tick method: " + tickMethod.name + " " + tickMethod.desc);
-                injectMultithreadedTick(tickMethod);
-                modified = true;
+                if (hasInjectionBridgeCall(tickMethod)) {
+                    Logger.info("MCJEBooster tick bridge already present in method: " + tickMethod.name);
+                } else {
+                    injectMultithreadedTick(tickMethod);
+                    modified = true;
+                }
             }
             
             if (modified) {
@@ -618,6 +622,21 @@ public class MinecraftServerTransformer implements ClassFileTransformer, Opcodes
         instructions.insertBefore(entryPoint, injectCode);
         
         Logger.info("Injected multi-threaded tick scheduling into method: " + method.name);
+    }
+    
+    private boolean hasInjectionBridgeCall(MethodNode method) {
+        for (AbstractInsnNode insn : method.instructions) {
+            if (insn instanceof MethodInsnNode) {
+                MethodInsnNode minsn = (MethodInsnNode) insn;
+                if (minsn.getOpcode() == INVOKESTATIC &&
+                    "com/mcjebooster/agent/InjectionBridge".equals(minsn.owner) &&
+                    "tickRegions".equals(minsn.name) &&
+                    "(Ljava/lang/Object;)V".equals(minsn.desc)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
     
     /**

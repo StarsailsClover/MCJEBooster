@@ -198,10 +198,10 @@ public class MCJEBoosterAgent {
             scheduler.initialize(detectedVersion, versionAdapter);
             Logger.info("Region scheduler initialized");
             
-            // Step 7: Start health monitoring
-            startHealthMonitoring();
-            
             initialized = true;
+
+            // Step 8: Start health monitoring
+            startHealthMonitoring();
             Logger.info("MCJEBooster initialization completed successfully!");
             
         } catch (Exception e) {

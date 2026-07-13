@@ -13,6 +13,15 @@ package com.mcjebooster.test;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+
+import com.mcjebooster.adapter.JsonVersionAdapter;
+import com.mcjebooster.adapter.VersionAdapter;
 import com.mcjebooster.scheduler.RegionScheduler;
 import com.mcjebooster.sync.SyncPointManager;
 import com.mcjebooster.util.VersionDetector;
@@ -81,5 +90,41 @@ public class MCJEBoosterTest {
     void testVersionRange() {
         assertTrue(VersionDetector.isInRange("1.20.6", "1.18.0", "1.21.0"));
         assertFalse(VersionDetector.isInRange("1.17.1", "1.18.0", "1.21.0"));
+    }
+
+    @Test
+    @DisplayName("JsonVersionAdapter should load plain and archived mcjeb files")
+    void testAdapterPackageFormats() throws Exception {
+        Path tempDir = Files.createTempDirectory("mcjebooster-adapter-test");
+        Path plain = tempDir.resolve("plain.mcjeb");
+        Path archived = tempDir.resolve("archived.mcjeb");
+
+        Files.writeString(plain, adapterJson("1.20.6-VANILLA", "VANILLA"), StandardCharsets.UTF_8);
+        writeArchivedAdapter(archived, adapterJson("1.20.6-FABRIC", "FABRIC"));
+
+        VersionAdapter plainAdapter = new JsonVersionAdapter(plain);
+        VersionAdapter archivedAdapter = new JsonVersionAdapter(archived);
+
+        assertEquals("1.20.6-VANILLA", plainAdapter.getAdapterId());
+        assertEquals(VersionAdapter.LoaderType.VANILLA, plainAdapter.getLoaderType());
+        assertEquals("1.20.6-FABRIC", archivedAdapter.getAdapterId());
+        assertEquals(VersionAdapter.LoaderType.FABRIC, archivedAdapter.getLoaderType());
+    }
+
+    private static String adapterJson(String adapterId, String loaderType) {
+        return "{" +
+            "\"adapterId\":\"" + adapterId + "\"," +
+            "\"minecraftVersion\":\"1.20.6\"," +
+            "\"loaderType\":\"" + loaderType + "\"," +
+            "\"supportedFeatures\":[\"MULTITHREADED_ENTITIES\"]" +
+            "}";
+    }
+
+    private static void writeArchivedAdapter(Path path, String json) throws IOException {
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(path))) {
+            jar.putNextEntry(new JarEntry("adapter.json"));
+            jar.write(json.getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
     }
 }

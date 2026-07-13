@@ -119,6 +119,12 @@ $compileOrder = @(
             "src/main/java/com/mcjebooster/injector/InjectorMain.java",
             "src/main/java/com/mcjebooster/update/UpdateManager.java"
         )
+    },
+    @{
+        Name = "Benchmark"
+        Files = @(
+            "src/main/java/com/mcjebooster/benchmark/SchedulerMicroBenchmark.java"
+        )
     }
 )
 

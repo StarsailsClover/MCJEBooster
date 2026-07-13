@@ -89,6 +89,29 @@ public class RegionScheduler {
     
     /** Conflict counter for thread safety monitoring */
     private final AtomicLong conflictCount = new AtomicLong(0);
+
+    private final AtomicLong safeTaskCount = new AtomicLong(0);
+
+    private final AtomicLong safeTaskNanos = new AtomicLong(0);
+
+    private final AtomicLong snapshotAnalysisCount = new AtomicLong(0);
+
+    private final AtomicLong snapshotItemCount = new AtomicLong(0);
+
+    private final AtomicLong snapshotAnalysisNanos = new AtomicLong(0);
+
+    /** 已解析的实体字段缓存：Class -> 字段名 */
+    private final ConcurrentHashMap<Class<?>, String> resolvedEntityXField = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Class<?>, String> resolvedEntityZField = new ConcurrentHashMap<>();
+
+    /** 已解析的方块实体字段缓存 */
+    private final ConcurrentHashMap<Class<?>, String> resolvedBlockEntityPosField = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Class<?>, String> resolvedBlockEntityXField = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Class<?>, String> resolvedBlockEntityZField = new ConcurrentHashMap<>();
+
+    /** 已解析的方块实体方法缓存 */
+    private final ConcurrentHashMap<Class<?>, String> resolvedBlockEntityGetXMethod = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Class<?>, String> resolvedBlockEntityGetZMethod = new ConcurrentHashMap<>();
     
     /** Execution time tracking for load balancing */
     private final ConcurrentHashMap<Integer, Long> regionExecutionTimes = new ConcurrentHashMap<>();
@@ -266,6 +289,432 @@ public class RegionScheduler {
         }
         
         tickCount++;
+    }
+
+    public SafeExecutionStats runSafeRegionTasks(Collection<? extends Runnable> tasks, long timeoutMs) {
+        ensureWorkerPool();
+        if (tasks == null || tasks.isEmpty()) {
+            return new SafeExecutionStats(0, 0, 0, 0, 0);
+        }
+
+        long startTime = System.nanoTime();
+        AtomicLong taskNanos = new AtomicLong(0);
+        AtomicLong failures = new AtomicLong(0);
+        List<CompletableFuture<Void>> futures = new ArrayList<>(tasks.size());
+
+        for (Runnable task : tasks) {
+            futures.add(CompletableFuture.runAsync(() -> {
+                long taskStart = System.nanoTime();
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    failures.incrementAndGet();
+                    throw t;
+                } finally {
+                    taskNanos.addAndGet(System.nanoTime() - taskStart);
+                }
+            }, workerPool));
+        }
+
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            failures.incrementAndGet();
+            for (CompletableFuture<Void> future : futures) {
+                future.cancel(true);
+            }
+        } catch (Exception e) {
+            failures.incrementAndGet();
+        }
+
+        long wallNanos = System.nanoTime() - startTime;
+        safeTaskCount.addAndGet(tasks.size());
+        safeTaskNanos.addAndGet(taskNanos.get());
+        return new SafeExecutionStats(tasks.size(), failures.get(), wallNanos, taskNanos.get(), workerCount);
+    }
+
+    public SnapshotAnalysisStats analyzeServerSnapshot(Object minecraftServer) {
+        if (minecraftServer == null || regions.isEmpty()) {
+            return new SnapshotAnalysisStats(0, 0, 0, 0, 0, workerCount);
+        }
+
+        long startTime = System.nanoTime();
+        List<SnapshotItem> items = collectSnapshotItems(minecraftServer);
+        if (items.isEmpty()) {
+            long wallNanos = System.nanoTime() - startTime;
+            snapshotAnalysisCount.incrementAndGet();
+            snapshotAnalysisNanos.addAndGet(wallNanos);
+            return new SnapshotAnalysisStats(0, 0, 0, wallNanos, 0, workerCount);
+        }
+
+        AtomicLong matchedItems = new AtomicLong(0);
+        AtomicLong hotRegionCount = new AtomicLong(0);
+        List<Runnable> tasks = new ArrayList<>(regions.size() * 2);
+        Region[] regionArray = regions.values().toArray(new Region[0]);
+
+        for (Region region : regions.values()) {
+            tasks.add(() -> {
+                long count = 0;
+                for (SnapshotItem item : items) {
+                    if (region.contains(item.chunkX, item.chunkZ)) {
+                        count += item.weight;
+                    }
+                }
+                region.recordSnapshotLoad(count);
+                matchedItems.addAndGet(count);
+            });
+        }
+
+        double averageLoad = items.size() / (double) Math.max(1, regionArray.length);
+        double hotThreshold = averageLoad * 2.0;
+        for (Region region : regionArray) {
+            tasks.add(() -> {
+                double neighborSum = 0.0;
+                int neighborCount = 0;
+                double dx = (region.getMinX() + region.getMaxX()) * 0.5;
+                double dz = (region.getMinZ() + region.getMaxZ()) * 0.5;
+                double span = Math.max(1.0, region.getMaxX() - region.getMinX());
+                for (Region other : regionArray) {
+                    if (other == region) {
+                        continue;
+                    }
+                    double ox = (other.getMinX() + other.getMaxX()) * 0.5;
+                    double oz = (other.getMinZ() + other.getMaxZ()) * 0.5;
+                    double dist = Math.hypot((ox - dx) / span, (oz - dz) / span);
+                    if (dist > 2.5) {
+                        continue;
+                    }
+                    double weight = 1.0 / (1.0 + dist * dist);
+                    neighborSum += other.getSmoothedLoad() * weight;
+                    neighborCount++;
+                }
+                double predicted = neighborCount > 0 ? neighborSum / neighborCount : 0.0;
+                region.setNeighborPredictedLoad(predicted);
+                double score = computeImbalanceScore(region.getSmoothedLoad(), predicted, averageLoad);
+                region.setImbalanceScore(score);
+                if (region.getSmoothedLoad() >= hotThreshold && score > 0.0) {
+                    hotRegionCount.incrementAndGet();
+                }
+            });
+        }
+
+        SafeExecutionStats executionStats = runSafeRegionTasks(tasks, Math.max(10L, tickTimeoutMs));
+
+        double peakLoad = 0.0;
+        double totalLoad = 0.0;
+        for (Region region : regionArray) {
+            double load = region.getSmoothedLoad();
+            totalLoad += load;
+            if (load > peakLoad) {
+                peakLoad = load;
+            }
+        }
+        double computedAverageLoad = totalLoad / Math.max(1, regionArray.length);
+
+        long wallNanos = System.nanoTime() - startTime;
+        snapshotAnalysisCount.incrementAndGet();
+        snapshotItemCount.addAndGet(items.size());
+        snapshotAnalysisNanos.addAndGet(wallNanos);
+        return new SnapshotAnalysisStats(
+            items.size(),
+            matchedItems.get(),
+            executionStats.getFailureCount(),
+            wallNanos,
+            executionStats.getTaskNanos(),
+            workerCount,
+            hotRegionCount.get(),
+            peakLoad,
+            computedAverageLoad
+        );
+    }
+
+    private double computeImbalanceScore(double selfLoad, double neighborLoad, double averageLoad) {
+        if (averageLoad <= 0) {
+            return 0.0;
+        }
+        double excess = selfLoad - averageLoad;
+        if (excess <= 0) {
+            return 0.0;
+        }
+        double neighborRatio = averageLoad > 0 ? neighborLoad / averageLoad : 0.0;
+        return (excess / averageLoad) * (1.0 + neighborRatio * 0.5);
+    }
+
+    /**
+     * 收集热点 region 列表
+     * @return 热点 region 列表（按负载降序排列）
+     */
+    public List<Region> collectHotRegions() {
+        if (regions.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        double average = getAverageRegionLoad();
+        double threshold = average * 2.0;
+        List<Region> hotRegions = new ArrayList<>();
+
+        for (Region region : regions.values()) {
+            if (region.getSmoothedLoad() >= threshold && region.getImbalanceScore() > 0.0) {
+                hotRegions.add(region);
+            }
+        }
+
+        hotRegions.sort((a, b) -> Double.compare(b.getSmoothedLoad(), a.getSmoothedLoad()));
+        return hotRegions;
+    }
+
+    /**
+     * 为热点 region 执行并行计算任务
+     * @param taskFactory 任务工厂，接收 region 返回计算任务
+     * @return 执行统计
+     */
+    public SafeExecutionStats executeHotspotTasks(java.util.function.Function<Region, Runnable> taskFactory) {
+        List<Region> hotRegions = collectHotRegions();
+        if (hotRegions.isEmpty()) {
+            return new SafeExecutionStats(0, 0, 0, 0, workerCount);
+        }
+
+        List<Runnable> tasks = new ArrayList<>(hotRegions.size());
+        for (Region region : hotRegions) {
+            tasks.add(taskFactory.apply(region));
+        }
+
+        return runSafeRegionTasks(tasks, Math.max(10L, tickTimeoutMs));
+    }
+
+    private List<SnapshotItem> collectSnapshotItems(Object minecraftServer) {
+        Object levelsObj = com.mcjebooster.util.ReflectionHelper.getFieldValue(
+            minecraftServer,
+            "levels",
+            "worlds",
+            "worldServers",
+            "field_71305_c"
+        );
+
+        Iterable<?> levels = toIterable(levelsObj);
+        if (levels == null) {
+            return Collections.emptyList();
+        }
+
+        List<SnapshotItem> items = new ArrayList<>();
+        for (Object level : levels) {
+            if (level == null) {
+                continue;
+            }
+
+            addEntitySnapshots(items, level);
+            addBlockEntitySnapshots(items, level);
+        }
+        return items;
+    }
+
+    private Iterable<?> toIterable(Object value) {
+        if (value instanceof Iterable) {
+            return (Iterable<?>) value;
+        }
+        if (value instanceof Map) {
+            return ((Map<?, ?>) value).values();
+        }
+        return null;
+    }
+
+    private void addEntitySnapshots(List<SnapshotItem> items, Object level) {
+        Collection<?> entities = com.mcjebooster.util.ReflectionHelper.getCollectionField(
+            level,
+            "entitiesById",
+            "entities",
+            "loadedEntityList",
+            "field_72996_f"
+        );
+
+        for (Object entity : entities) {
+            if (entity == null) {
+                continue;
+            }
+            Integer chunkX = readChunkCoordinate(entity, true);
+            Integer chunkZ = readChunkCoordinate(entity, false);
+            if (chunkX != null && chunkZ != null) {
+                items.add(new SnapshotItem(chunkX, chunkZ, 1));
+            }
+        }
+    }
+
+    private void addBlockEntitySnapshots(List<SnapshotItem> items, Object level) {
+        Collection<?> blockEntities = com.mcjebooster.util.ReflectionHelper.getCollectionField(
+            level,
+            "blockEntityTickers",
+            "blockEntities",
+            "loadedTileEntityList",
+            "tickableBlockEntities",
+            "field_147482_g"
+        );
+
+        for (Object blockEntity : blockEntities) {
+            if (blockEntity == null) {
+                continue;
+            }
+            int[] chunkPos = readBlockEntityChunk(blockEntity);
+            if (chunkPos != null) {
+                items.add(new SnapshotItem(chunkPos[0], chunkPos[1], 2));
+            }
+        }
+    }
+
+    private Integer readChunkCoordinate(Object entity, boolean xAxis) {
+        Class<?> clazz = entity.getClass();
+        ConcurrentHashMap<Class<?>, String> cache = xAxis ? resolvedEntityXField : resolvedEntityZField;
+        String resolved = cache.get(clazz);
+        if (resolved == null) {
+            String[] candidates = xAxis
+                ? new String[]{"x", "posX", "field_70165_t"}
+                : new String[]{"z", "posZ", "field_70161_v"};
+            Object testValue = com.mcjebooster.util.ReflectionHelper.getFieldValue(entity, candidates);
+            if (testValue instanceof Number) {
+                cache.put(clazz, candidates[0]);
+                return ((Number) testValue).intValue() >> 4;
+            }
+            for (String name : candidates) {
+                Object v = com.mcjebooster.util.ReflectionHelper.getFieldValue(entity, new String[]{name});
+                if (v instanceof Number) {
+                    cache.put(clazz, name);
+                    return ((Number) v).intValue() >> 4;
+                }
+            }
+            return null;
+        }
+        Object value = com.mcjebooster.util.ReflectionHelper.getFieldValue(entity, new String[]{resolved});
+        if (value instanceof Number) {
+            return ((Number) value).intValue() >> 4;
+        }
+        return null;
+    }
+
+    private int[] readBlockEntityChunk(Object blockEntity) {
+        Class<?> clazz = blockEntity.getClass();
+
+        String posField = resolvedBlockEntityPosField.get(clazz);
+        if (posField == null) {
+            String[] posCandidates = {"worldPosition", "pos", "blockPos", "field_174879_c"};
+            Object testPos = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, posCandidates);
+            if (testPos != null) {
+                posField = posCandidates[0];
+                resolvedBlockEntityPosField.put(clazz, posField);
+            } else {
+                for (String name : posCandidates) {
+                    Object v = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, name);
+                    if (v != null) {
+                        posField = name;
+                        resolvedBlockEntityPosField.put(clazz, posField);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (posField != null) {
+            Object pos = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, posField);
+            if (pos != null) {
+                Class<?> posClass = pos.getClass();
+                String getMethodName = resolvedBlockEntityGetXMethod.get(posClass);
+                String getZMethodName = resolvedBlockEntityGetZMethod.get(posClass);
+                if (getMethodName == null || getZMethodName == null) {
+                    String[] xCandidates = {"getX", "x", "func_177958_n"};
+                    String[] zCandidates = {"getZ", "z", "func_177952_p"};
+                    Object testX = com.mcjebooster.util.ReflectionHelper.invokeMethod(pos, xCandidates);
+                    if (testX instanceof Number) {
+                        getMethodName = xCandidates[0];
+                        resolvedBlockEntityGetXMethod.put(posClass, getMethodName);
+                    } else {
+                        for (String name : xCandidates) {
+                            Object v = com.mcjebooster.util.ReflectionHelper.invokeMethod(pos, new String[]{name});
+                            if (v instanceof Number) {
+                                getMethodName = name;
+                                resolvedBlockEntityGetXMethod.put(posClass, name);
+                                break;
+                            }
+                        }
+                    }
+                    Object testZ = com.mcjebooster.util.ReflectionHelper.invokeMethod(pos, zCandidates);
+                    if (testZ instanceof Number) {
+                        getZMethodName = zCandidates[0];
+                        resolvedBlockEntityGetZMethod.put(posClass, getZMethodName);
+                    } else {
+                        for (String name : zCandidates) {
+                            Object v = com.mcjebooster.util.ReflectionHelper.invokeMethod(pos, new String[]{name});
+                            if (v instanceof Number) {
+                                getZMethodName = name;
+                                resolvedBlockEntityGetZMethod.put(posClass, name);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (getMethodName != null && getZMethodName != null) {
+                    Object x = com.mcjebooster.util.ReflectionHelper.invokeMethod(pos, new String[]{getMethodName});
+                    Object z = com.mcjebooster.util.ReflectionHelper.invokeMethod(pos, new String[]{getZMethodName});
+                    if (x instanceof Number && z instanceof Number) {
+                        return new int[] { ((Number) x).intValue() >> 4, ((Number) z).intValue() >> 4 };
+                    }
+                }
+            }
+        }
+
+        String xField = resolvedBlockEntityXField.get(clazz);
+        String zField = resolvedBlockEntityZField.get(clazz);
+        if (xField == null) {
+            String[] xCandidates = {"x", "xCoord", "field_174879_c"};
+            Object testX = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, xCandidates);
+            if (testX instanceof Number) {
+                xField = xCandidates[0];
+                resolvedBlockEntityXField.put(clazz, xField);
+            } else {
+                for (String name : xCandidates) {
+                    Object v = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, name);
+                    if (v instanceof Number) {
+                        xField = name;
+                        resolvedBlockEntityXField.put(clazz, name);
+                        break;
+                    }
+                }
+            }
+        }
+        if (zField == null) {
+            String[] zCandidates = {"z", "zCoord", "field_174881_e"};
+            Object testZ = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, zCandidates);
+            if (testZ instanceof Number) {
+                zField = zCandidates[0];
+                resolvedBlockEntityZField.put(clazz, zField);
+            } else {
+                for (String name : zCandidates) {
+                    Object v = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, name);
+                    if (v instanceof Number) {
+                        zField = name;
+                        resolvedBlockEntityZField.put(clazz, name);
+                        break;
+                    }
+                }
+            }
+        }
+        if (xField != null && zField != null) {
+            Object x = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, xField);
+            Object z = com.mcjebooster.util.ReflectionHelper.getFieldValue(blockEntity, zField);
+            if (x instanceof Number && z instanceof Number) {
+                return new int[] { ((Number) x).intValue() >> 4, ((Number) z).intValue() >> 4 };
+            }
+        }
+        return null;
+    }
+
+    private void ensureWorkerPool() {
+        if (workerPool != null && !workerPool.isShutdown()) {
+            return;
+        }
+        workerPool = new ForkJoinPool(
+            workerCount,
+            ForkJoinPool.defaultForkJoinWorkerThreadFactory,
+            null,
+            true
+        );
     }
     
     /**
@@ -743,6 +1192,60 @@ public class RegionScheduler {
     public int getRegionCount() {
         return regions.size();
     }
+
+    public long getSafeTaskCount() {
+        return safeTaskCount.get();
+    }
+
+    public long getSafeTaskNanos() {
+        return safeTaskNanos.get();
+    }
+
+    public long getSnapshotAnalysisCount() {
+        return snapshotAnalysisCount.get();
+    }
+
+    public long getSnapshotItemCount() {
+        return snapshotItemCount.get();
+    }
+
+    public long getSnapshotAnalysisNanos() {
+        return snapshotAnalysisNanos.get();
+    }
+
+    public double getPeakRegionLoad() {
+        double peak = 0.0;
+        for (Region region : regions.values()) {
+            double load = region.getSmoothedLoad();
+            if (load > peak) {
+                peak = load;
+            }
+        }
+        return peak;
+    }
+
+    public long getHotRegionCount() {
+        long count = 0;
+        double average = getAverageRegionLoad();
+        double threshold = average * 2.0;
+        for (Region region : regions.values()) {
+            if (region.getSmoothedLoad() >= threshold && region.getImbalanceScore() > 0.0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public double getAverageRegionLoad() {
+        if (regions.isEmpty()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (Region region : regions.values()) {
+            total += region.getSmoothedLoad();
+        }
+        return total / regions.size();
+    }
     
     /**
      * Adds a region to the scheduler
@@ -772,6 +1275,12 @@ public class RegionScheduler {
         private final int minZ;
         private final int maxX;
         private final int maxZ;
+        private volatile double smoothedLoad;
+        private volatile double peakLoad;
+        private volatile long loadSampleCount;
+        private volatile double instantLoad;
+        private volatile double neighborPredictedLoad;
+        private volatile double imbalanceScore;
         
         public Region(int id, int minX, int minZ, int maxX, int maxZ) {
             this.id = id;
@@ -811,10 +1320,181 @@ public class RegionScheduler {
         public boolean contains(int x, int z) {
             return x >= minX && x < maxX && z >= minZ && z < maxZ;
         }
-        
+
+        public double getSmoothedLoad() {
+            return smoothedLoad;
+        }
+
+        public double getPeakLoad() {
+            return peakLoad;
+        }
+
+        public long getLoadSampleCount() {
+            return loadSampleCount;
+        }
+
+        public double getInstantLoad() {
+            return instantLoad;
+        }
+
+        public double getNeighborPredictedLoad() {
+            return neighborPredictedLoad;
+        }
+
+        public void setNeighborPredictedLoad(double value) {
+            this.neighborPredictedLoad = value;
+        }
+
+        public double getImbalanceScore() {
+            return imbalanceScore;
+        }
+
+        public void setImbalanceScore(double value) {
+            this.imbalanceScore = value;
+        }
+
+        public synchronized void recordSnapshotLoad(double load) {
+            this.instantLoad = load;
+            this.loadSampleCount++;
+            if (loadSampleCount <= 1) {
+                this.smoothedLoad = load;
+            } else {
+                this.smoothedLoad = this.smoothedLoad * 0.7 + load * 0.3;
+            }
+            if (load > this.peakLoad) {
+                this.peakLoad = load;
+            }
+        }
+
         @Override
         public String toString() {
             return "Region[" + id + "] (" + minX + "," + minZ + ") to (" + maxX + "," + maxZ + ")";
+        }
+    }
+
+    public static class SafeExecutionStats {
+        private final int taskCount;
+        private final long failureCount;
+        private final long wallNanos;
+        private final long taskNanos;
+        private final int workerCount;
+
+        public SafeExecutionStats(int taskCount, long failureCount, long wallNanos, long taskNanos, int workerCount) {
+            this.taskCount = taskCount;
+            this.failureCount = failureCount;
+            this.wallNanos = wallNanos;
+            this.taskNanos = taskNanos;
+            this.workerCount = workerCount;
+        }
+
+        public int getTaskCount() {
+            return taskCount;
+        }
+
+        public long getFailureCount() {
+            return failureCount;
+        }
+
+        public long getWallNanos() {
+            return wallNanos;
+        }
+
+        public long getTaskNanos() {
+            return taskNanos;
+        }
+
+        public int getWorkerCount() {
+            return workerCount;
+        }
+
+        public double getParallelismRatio() {
+            if (wallNanos <= 0) {
+                return 0.0;
+            }
+            return taskNanos / (double) wallNanos;
+        }
+    }
+
+    private static class SnapshotItem {
+        private final int chunkX;
+        private final int chunkZ;
+        private final int weight;
+
+        private SnapshotItem(int chunkX, int chunkZ, int weight) {
+            this.chunkX = chunkX;
+            this.chunkZ = chunkZ;
+            this.weight = weight;
+        }
+    }
+
+    public static class SnapshotAnalysisStats {
+        private final int itemCount;
+        private final long matchedWeight;
+        private final long failureCount;
+        private final long wallNanos;
+        private final long taskNanos;
+        private final int workerCount;
+        private final long hotRegionCount;
+        private final double peakLoad;
+        private final double averageLoad;
+
+        public SnapshotAnalysisStats(int itemCount, long matchedWeight, long failureCount, long wallNanos, long taskNanos, int workerCount) {
+            this(itemCount, matchedWeight, failureCount, wallNanos, taskNanos, workerCount, 0L, 0.0, 0.0);
+        }
+
+        public SnapshotAnalysisStats(int itemCount, long matchedWeight, long failureCount, long wallNanos, long taskNanos, int workerCount, long hotRegionCount, double peakLoad, double averageLoad) {
+            this.itemCount = itemCount;
+            this.matchedWeight = matchedWeight;
+            this.failureCount = failureCount;
+            this.wallNanos = wallNanos;
+            this.taskNanos = taskNanos;
+            this.workerCount = workerCount;
+            this.hotRegionCount = hotRegionCount;
+            this.peakLoad = peakLoad;
+            this.averageLoad = averageLoad;
+        }
+
+        public int getItemCount() {
+            return itemCount;
+        }
+
+        public long getMatchedWeight() {
+            return matchedWeight;
+        }
+
+        public long getFailureCount() {
+            return failureCount;
+        }
+
+        public long getWallNanos() {
+            return wallNanos;
+        }
+
+        public long getTaskNanos() {
+            return taskNanos;
+        }
+
+        public int getWorkerCount() {
+            return workerCount;
+        }
+
+        public long getHotRegionCount() {
+            return hotRegionCount;
+        }
+
+        public double getPeakLoad() {
+            return peakLoad;
+        }
+
+        public double getAverageLoad() {
+            return averageLoad;
+        }
+
+        public double getParallelismRatio() {
+            if (wallNanos <= 0) {
+                return 0.0;
+            }
+            return taskNanos / (double) wallNanos;
         }
     }
 }

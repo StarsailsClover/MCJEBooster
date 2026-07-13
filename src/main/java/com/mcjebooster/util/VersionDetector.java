@@ -21,6 +21,7 @@ package com.mcjebooster.util;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Properties;
@@ -244,9 +245,85 @@ public class VersionDetector {
      * @return The version string, or null if not detected
      */
     private static String detectFromBytecodeSignatures() {
-        // This would analyze bytecode patterns to detect version
-        // For now, this is a placeholder
+        ClassLoader[] classLoaders = getCandidateClassLoaders();
+
+        for (VersionSignature sig : VERSION_SIGNATURES) {
+            String resourceName = sig.classPattern + ".class";
+
+            for (ClassLoader classLoader : classLoaders) {
+                byte[] classBytes = readClassResource(classLoader, resourceName);
+                if (classBytes != null && containsUtf8Constant(classBytes, sig.methodPattern)) {
+                    Logger.info("Detected version from bytecode signature: " + sig.version);
+                    return sig.version;
+                }
+            }
+        }
+
         return null;
+    }
+
+    private static ClassLoader[] getCandidateClassLoaders() {
+        ClassLoader context = Thread.currentThread().getContextClassLoader();
+        ClassLoader own = VersionDetector.class.getClassLoader();
+        ClassLoader system = ClassLoader.getSystemClassLoader();
+
+        if (context == own && own == system) {
+            return new ClassLoader[] { context };
+        }
+        if (context == own) {
+            return new ClassLoader[] { context, system };
+        }
+        if (context == system) {
+            return new ClassLoader[] { context, own };
+        }
+        if (own == system) {
+            return new ClassLoader[] { context, own };
+        }
+        return new ClassLoader[] { context, own, system };
+    }
+
+    private static byte[] readClassResource(ClassLoader classLoader, String resourceName) {
+        if (classLoader == null) {
+            return null;
+        }
+
+        try (InputStream stream = classLoader.getResourceAsStream(resourceName)) {
+            if (stream == null) {
+                return null;
+            }
+
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] data = new byte[4096];
+            int read;
+            while ((read = stream.read(data)) != -1) {
+                buffer.write(data, 0, read);
+            }
+            return buffer.toByteArray();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static boolean containsUtf8Constant(byte[] classBytes, String value) {
+        byte[] needle = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (needle.length == 0 || classBytes.length < needle.length) {
+            return false;
+        }
+
+        for (int i = 0; i <= classBytes.length - needle.length; i++) {
+            boolean matched = true;
+            for (int j = 0; j < needle.length; j++) {
+                if (classBytes[i + j] != needle[j]) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                return true;
+            }
+        }
+
+        return false;
     }
     
     /**

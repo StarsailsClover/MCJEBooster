@@ -71,8 +71,22 @@ public class JsonVersionAdapter implements VersionAdapter {
      * @throws IOException if reading fails
      */
     private JSONObject loadConfig(Path path) throws IOException {
-        String content = new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+        String content = readAdapterJson(path);
         return new JSONObject(content);
+    }
+
+    private String readAdapterJson(Path path) throws IOException {
+        try (JarFile jar = new JarFile(path.toFile())) {
+            JarEntry entry = jar.getJarEntry("adapter.json");
+            if (entry == null) {
+                throw new FileNotFoundException("Missing adapter.json in adapter archive: " + path);
+            }
+            try (InputStream in = jar.getInputStream(entry)) {
+                return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } catch (java.util.zip.ZipException e) {
+            return new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
     
     /**

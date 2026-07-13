@@ -40,8 +40,7 @@ import com.mcjebooster.util.Logger;
  * Or programmatically:
  *   InjectorMain.main(new String[]{"--auto"});
  * 
- * IMPORTANT: This injector requires the JDK's tools.jar (or equivalent)
- * to be available on the classpath.
+ * IMPORTANT: This injector requires a full JDK with the jdk.attach module.
  * 
  * @author StarsailsClover
  * @version 26.1-05102026

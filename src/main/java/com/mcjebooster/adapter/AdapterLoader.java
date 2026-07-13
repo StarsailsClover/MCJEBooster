@@ -178,7 +178,7 @@ public class AdapterLoader {
      * @throws IOException if reading fails
      */
     private String extractAdapterId(Path path) throws IOException {
-        String content = new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+        String content = readAdapterJson(path);
         String adapterId = extractJsonField(content, "adapterId");
         if (adapterId != null && !adapterId.isEmpty()) {
             return adapterId;
@@ -186,6 +186,20 @@ public class AdapterLoader {
         // Fallback: derive from filename
         String fileName = path.getFileName().toString();
         return fileName.substring(0, fileName.length() - ADAPTER_EXTENSION.length());
+    }
+    
+    private String readAdapterJson(Path path) throws IOException {
+        try (JarFile jar = new JarFile(path.toFile())) {
+            JarEntry entry = jar.getJarEntry(MANIFEST_ENTRY);
+            if (entry == null) {
+                throw new FileNotFoundException("Missing " + MANIFEST_ENTRY + " in adapter archive: " + path);
+            }
+            try (InputStream in = jar.getInputStream(entry)) {
+                return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } catch (java.util.zip.ZipException e) {
+            return new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
     
     /**
