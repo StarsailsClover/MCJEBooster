@@ -482,6 +482,32 @@ public class RegionScheduler {
         return runSafeRegionTasks(tasks, Math.max(10L, tickTimeoutMs));
     }
 
+    /**
+     * Execute all registered hotspot tasks for hot regions.
+     * Called from InjectionBridge via reflection. Uses HotspotTaskRegistry
+     * to create real analysis tasks (entity density, chunk activity, etc.)
+     * instead of placeholder computations.
+     *
+     * @return execution stats
+     */
+    public SafeExecutionStats executeRegistryHotspotTasks() {
+        List<Region> hotRegions = collectHotRegions();
+        if (hotRegions.isEmpty()) {
+            return new SafeExecutionStats(0, 0, 0, 0, workerCount);
+        }
+
+        List<Runnable> tasks = new ArrayList<>();
+        for (Region region : hotRegions) {
+            tasks.addAll(HotspotTaskRegistry.createTasksForRegion(region));
+        }
+
+        if (tasks.isEmpty()) {
+            return new SafeExecutionStats(0, 0, 0, 0, workerCount);
+        }
+
+        return runSafeRegionTasks(tasks, Math.max(10L, tickTimeoutMs));
+    }
+
     private List<SnapshotItem> collectSnapshotItems(Object minecraftServer) {
         Object levelsObj = com.mcjebooster.util.ReflectionHelper.getFieldValue(
             minecraftServer,

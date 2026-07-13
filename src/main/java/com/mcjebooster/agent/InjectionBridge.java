@@ -152,38 +152,8 @@ public final class InjectionBridge {
             Class<?> schedulerClass = cl.loadClass("com.mcjebooster.scheduler.RegionScheduler");
             Object scheduler = schedulerClass.getMethod("getInstance").invoke(null);
 
-            // 创建一个任务工厂，为每个热点 region 生成一个轻量级计算任务
-            Object taskFactory = java.lang.reflect.Proxy.newProxyInstance(
-                cl,
-                new Class<?>[] { cl.loadClass("java.util.function.Function") },
-                (proxy, method, args) -> {
-                    if (method.getName().equals("apply")) {
-                        Object region = args[0];
-                        // 返回一个 Runnable 任务
-                        return (Runnable) () -> {
-                            try {
-                                // 获取 region 的负载信息
-                                double load = (double) region.getClass().getMethod("getSmoothedLoad").invoke(region);
-                                int id = (int) region.getClass().getMethod("getId").invoke(region);
-                                // 执行轻量级计算：模拟热点 region 的负载分析
-                                double sum = 0;
-                                for (int i = 0; i < 1000; i++) {
-                                    sum += Math.sin(i * load) * Math.cos(i);
-                                }
-                                // 避免优化掉计算
-                                if (sum == Double.MAX_VALUE) {
-                                    System.out.println("Hotspot task for region " + id);
-                                }
-                            } catch (Throwable ignored) {
-                            }
-                        };
-                    }
-                    return null;
-                }
-            );
-
-            schedulerClass.getMethod("executeHotspotTasks", cl.loadClass("java.util.function.Function"))
-                .invoke(scheduler, taskFactory);
+            // Call the registry-based hotspot task executor
+            schedulerClass.getMethod("executeRegistryHotspotTasks").invoke(scheduler);
         } catch (Throwable ignored) {
         }
     }
